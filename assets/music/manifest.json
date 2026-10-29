@@ -1,0 +1,905 @@
+{
+  "license_note": "Every track is CC0 1.0 (public domain): free to use, modify and redistribute, commercially too, with no attribution required. Sources listed per track.",
+  "tracks": [
+    {
+      "file": "sectra-freepd-connecting-rainbows.mp3",
+      "title": "Connecting Rainbows",
+      "artist": "FreePD",
+      "mood": "world",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-022f650aa6e024e3.mp3"
+    },
+    {
+      "file": "sectra-freepd-stereotype-news.mp3",
+      "title": "Stereotype News",
+      "artist": "FreePD",
+      "mood": "upbeat",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-07e974381e5a302b.mp3"
+    },
+    {
+      "file": "sectra-freepd-parhelion.mp3",
+      "title": "Parhelion",
+      "artist": "FreePD",
+      "mood": "romantic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-16ef66f2a6022fa3.mp3"
+    },
+    {
+      "file": "sectra-freepd-midnight-in-the-green-house.mp3",
+      "title": "Midnight in the Green House",
+      "artist": "FreePD",
+      "mood": "world",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-1b57ce07070d4cc3.mp3"
+    },
+    {
+      "file": "sectra-freepd-hillbilly-swing.mp3",
+      "title": "Hillbilly Swing",
+      "artist": "FreePD",
+      "mood": "world",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-1f914c628c3e4e32.mp3"
+    },
+    {
+      "file": "sectra-freepd-bar-brawl.mp3",
+      "title": "Bar Brawl",
+      "artist": "FreePD",
+      "mood": "upbeat",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-312f960df7889d97.mp3"
+    },
+    {
+      "file": "sectra-freepd-neptunian-princess.mp3",
+      "title": "Neptunian Princess",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-389d00048e36ee01.mp3"
+    },
+    {
+      "file": "sectra-freepd-nomadic-sunset.mp3",
+      "title": "Nomadic Sunset",
+      "artist": "FreePD",
+      "mood": "world",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-47bdc9bfa18c38d9.mp3"
+    },
+    {
+      "file": "sectra-freepd-i-guess-what-i-m-trying-to-say.mp3",
+      "title": "I Guess What I'm Trying to Say",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-4c0a755ad2b33292.mp3"
+    },
+    {
+      "file": "sectra-freepd-patron-saint-of-heists.mp3",
+      "title": "Patron Saint of Heists",
+      "artist": "FreePD",
+      "mood": "cinematic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-4e5b94c986b600ac.mp3"
+    },
+    {
+      "file": "sectra-freepd-romantic-inspiration.mp3",
+      "title": "Romantic Inspiration",
+      "artist": "FreePD",
+      "mood": "romantic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-53b85f238b19606c.mp3"
+    },
+    {
+      "file": "sectra-freepd-brewing-potions.mp3",
+      "title": "Brewing Potions",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-5441791adab6c3d5.mp3"
+    },
+    {
+      "file": "sectra-freepd-beginning-of-conflict.mp3",
+      "title": "Beginning of Conflict",
+      "artist": "FreePD",
+      "mood": "cinematic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-5973adb56d2534d9.mp3"
+    },
+    {
+      "file": "sectra-freepd-big-eyes.mp3",
+      "title": "Big Eyes",
+      "artist": "FreePD",
+      "mood": "epic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-5acebf3d6453327c.mp3"
+    },
+    {
+      "file": "sectra-freepd-goldcrest.mp3",
+      "title": "Goldcrest",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-5fe9d9da3bbf8584.mp3"
+    },
+    {
+      "file": "sectra-freepd-dreams-of-vain.mp3",
+      "title": "Dreams of Vain",
+      "artist": "FreePD",
+      "mood": "cinematic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-633f13a11eb1fa3a.mp3"
+    },
+    {
+      "file": "sectra-freepd-the-britons.mp3",
+      "title": "The Britons",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-671c0f25bb37805e.mp3"
+    },
+    {
+      "file": "sectra-freepd-be-chillin.mp3",
+      "title": "Be Chillin",
+      "artist": "FreePD",
+      "mood": "upbeat",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-6c9a5c343a351b0f.mp3"
+    },
+    {
+      "file": "sectra-freepd-night-in-the-castle.mp3",
+      "title": "Night in the Castle",
+      "artist": "FreePD",
+      "mood": "comedy",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-7d92a860a3d9b2cb.mp3"
+    },
+    {
+      "file": "sectra-freepd-emotional-blockbuster-2.mp3",
+      "title": "Emotional Blockbuster 2",
+      "artist": "FreePD",
+      "mood": "epic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-82f6dbce0d3617c6.mp3"
+    },
+    {
+      "file": "sectra-freepd-inspiration.mp3",
+      "title": "Inspiration",
+      "artist": "FreePD",
+      "mood": "upbeat",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-878d4dee797d92ef.mp3"
+    },
+    {
+      "file": "sectra-freepd-be-jammin.mp3",
+      "title": "Be Jammin",
+      "artist": "FreePD",
+      "mood": "world",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-87e5472c10154fdf.mp3"
+    },
+    {
+      "file": "sectra-freepd-black-knight.mp3",
+      "title": "Black Knight",
+      "artist": "FreePD",
+      "mood": "epic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-93b34102c76375c5.mp3"
+    },
+    {
+      "file": "sectra-freepd-attic-secrets.mp3",
+      "title": "Attic Secrets",
+      "artist": "FreePD",
+      "mood": "comedy",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-9c86cf879c4155d0.mp3"
+    },
+    {
+      "file": "sectra-freepd-joey-s-song.mp3",
+      "title": "Joey's Song",
+      "artist": "FreePD",
+      "mood": "comedy",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-9f6ce7e72ac91f89.mp3"
+    },
+    {
+      "file": "sectra-freepd-drop-point.mp3",
+      "title": "Drop Point",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-a0f26458dfa37a15.mp3"
+    },
+    {
+      "file": "sectra-freepd-celebration.mp3",
+      "title": "Celebration",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-ac97bd9918f6cb79.mp3"
+    },
+    {
+      "file": "sectra-freepd-painting-room.mp3",
+      "title": "Painting Room",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-b01e7b753e35c9b5.mp3"
+    },
+    {
+      "file": "sectra-freepd-pina-colada.mp3",
+      "title": "Pina Colada",
+      "artist": "FreePD",
+      "mood": "romantic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-b71090110a54aaff.mp3"
+    },
+    {
+      "file": "sectra-freepd-inventing-flight.mp3",
+      "title": "Inventing Flight",
+      "artist": "FreePD",
+      "mood": "upbeat",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-bf421296305f76bc.mp3"
+    },
+    {
+      "file": "sectra-freepd-still-pickin.mp3",
+      "title": "Still Pickin",
+      "artist": "FreePD",
+      "mood": "upbeat",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-c0a904fe10066fce.mp3"
+    },
+    {
+      "file": "sectra-freepd-energizing.mp3",
+      "title": "Energizing",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-c37643abec093971.mp3"
+    },
+    {
+      "file": "sectra-freepd-a-waltz-for-naseem.mp3",
+      "title": "A Waltz For Naseem",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-c4169e8779da24e2.mp3"
+    },
+    {
+      "file": "sectra-freepd-holiday-weasel.mp3",
+      "title": "Holiday Weasel",
+      "artist": "FreePD",
+      "mood": "comedy",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-c52c33c1edb41ed5.mp3"
+    },
+    {
+      "file": "sectra-freepd-desert-fox.mp3",
+      "title": "Desert Fox",
+      "artist": "FreePD",
+      "mood": "cinematic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-d8517372720a23ba.mp3"
+    },
+    {
+      "file": "sectra-freepd-stunted-adventure.mp3",
+      "title": "Stunted Adventure",
+      "artist": "FreePD",
+      "mood": "cinematic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-db629800089a7ac4.mp3"
+    },
+    {
+      "file": "sectra-freepd-asking-questions.mp3",
+      "title": "Asking Questions",
+      "artist": "FreePD",
+      "mood": "chill",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-ea63b2b9d237b670.mp3"
+    },
+    {
+      "file": "sectra-freepd-desert-conflict.mp3",
+      "title": "Desert Conflict",
+      "artist": "FreePD",
+      "mood": "world",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-f1bb383531d64d26.mp3"
+    },
+    {
+      "file": "sectra-freepd-del-rio-bravo.mp3",
+      "title": "Del Rio Bravo",
+      "artist": "FreePD",
+      "mood": "world",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-f2a2d3736808e32e.mp3"
+    },
+    {
+      "file": "sectra-freepd-magic-in-the-garden.mp3",
+      "title": "Magic in the Garden",
+      "artist": "FreePD",
+      "mood": "cinematic",
+      "seconds": null,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/abook-music-freepd-cc0",
+      "url": "https://archive.org/download/abook-music-freepd-cc0/fpd-f8d2f58ccd612edf.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-go-to-the-picnic.mp3",
+      "title": "Go to the Picnic",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 187,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839",
+      "url": "https://archive.org/download/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839/Loyalty_Freak_Music_-_01_-_Go_to_the_Picnic.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-hug-convoy.mp3",
+      "title": "Hug Convoy",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 201,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839",
+      "url": "https://archive.org/download/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839/Loyalty_Freak_Music_-_02_-_Hug_Convoy.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-love-train.mp3",
+      "title": "Love Train",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 121,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839",
+      "url": "https://archive.org/download/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839/Loyalty_Freak_Music_-_03_-_Love_Train.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-sweet-sun.mp3",
+      "title": "Sweet Sun",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 120,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839",
+      "url": "https://archive.org/download/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839/Loyalty_Freak_Music_-_04_-_Sweet_Sun.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-ice-cream-with-you.mp3",
+      "title": "Ice Cream With You",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 167,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839",
+      "url": "https://archive.org/download/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839/Loyalty_Freak_Music_-_05_-_Ice_Cream_with_you.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-yippee.mp3",
+      "title": "Yippee",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 130,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839",
+      "url": "https://archive.org/download/LoyaltyFreakMusicPOSITIVEATTITUDE20170920175908839/Loyalty_Freak_Music_-_08_-_Yippee_.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-everyone-is-so-alive.mp3",
+      "title": "Everyone Is So Alive",
+      "artist": "Loyalty Freak Music",
+      "mood": "electronic",
+      "seconds": 255,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicROBOTDANCE2017113032423755",
+      "url": "https://archive.org/download/LoyaltyFreakMusicROBOTDANCE2017113032423755/Loyalty_Freak_Music_-_01_-_Everyone_is_so_alive.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-high-technologic-beat-explosion.mp3",
+      "title": "High Technologic Beat Explosion",
+      "artist": "Loyalty Freak Music",
+      "mood": "electronic",
+      "seconds": 221,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicROBOTDANCE2017113032423755",
+      "url": "https://archive.org/download/LoyaltyFreakMusicROBOTDANCE2017113032423755/Loyalty_Freak_Music_-_02_-_High_Technologic_Beat_Explosion.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-after-party.mp3",
+      "title": "After Party",
+      "artist": "Loyalty Freak Music",
+      "mood": "electronic",
+      "seconds": 177,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicROBOTDANCE2017113032423755",
+      "url": "https://archive.org/download/LoyaltyFreakMusicROBOTDANCE2017113032423755/Loyalty_Freak_Music_-_03_-_After_Party.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-sweet-you.mp3",
+      "title": "Sweet You",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 160,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223",
+      "url": "https://archive.org/download/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223/Loyalty_Freak_Music_-_01_-_Sweet_You.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-beach.mp3",
+      "title": "Beach",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 161,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223",
+      "url": "https://archive.org/download/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223/Loyalty_Freak_Music_-_08_-_Beach.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-shoepop.mp3",
+      "title": "Shoepop",
+      "artist": "Loyalty Freak Music",
+      "mood": "upbeat",
+      "seconds": 164,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223",
+      "url": "https://archive.org/download/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223/Loyalty_Freak_Music_-_09_-_Shoepop.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-hangover.mp3",
+      "title": "Hangover",
+      "artist": "Loyalty Freak Music",
+      "mood": "chill",
+      "seconds": 193,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223",
+      "url": "https://archive.org/download/LoyaltyFreakMusicMELODIESWITHABEAT2018030251947223/Loyalty_Freak_Music_-_10_-_Hangover.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-where-i-m-high.mp3",
+      "title": "Where I'm High",
+      "artist": "Loyalty Freak Music",
+      "mood": "chill",
+      "seconds": 171,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/loyalty-freak-music-chill-for-real",
+      "url": "https://archive.org/download/loyalty-freak-music-chill-for-real/Loyalty%20Freak%20Music%20-%20CHILL%20FOR%20REAL%20%21%20-%2001%20Where%20I%27m%20High.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-happy-sadie.mp3",
+      "title": "Happy Sadie",
+      "artist": "Loyalty Freak Music",
+      "mood": "chill",
+      "seconds": 147,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/loyalty-freak-music-chill-for-real",
+      "url": "https://archive.org/download/loyalty-freak-music-chill-for-real/Loyalty%20Freak%20Music%20-%20CHILL%20FOR%20REAL%20%21%20-%2002%20Happy%20Sadie.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-coexistenz.mp3",
+      "title": "Coexistenz",
+      "artist": "Loyalty Freak Music",
+      "mood": "chill",
+      "seconds": 156,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicTOCHILLANDSTAYAWAKE20170923132621469",
+      "url": "https://archive.org/download/LoyaltyFreakMusicTOCHILLANDSTAYAWAKE20170923132621469/Loyalty_Freak_Music_-_01_-_Coexistenz.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-chillin-with-a-drink-at-the-club.mp3",
+      "title": "Chillin With a Drink at the Club",
+      "artist": "Loyalty Freak Music",
+      "mood": "chill",
+      "seconds": 223,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusicTOCHILLANDSTAYAWAKE20170923132621469",
+      "url": "https://archive.org/download/LoyaltyFreakMusicTOCHILLANDSTAYAWAKE20170923132621469/Loyalty_Freak_Music_-_03_-_Chillin_with_a_drink_at_the_club.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-lack-of-color.mp3",
+      "title": "Lack of Color",
+      "artist": "Loyalty Freak Music",
+      "mood": "lofi",
+      "seconds": 206,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/loyalty-freak-music-lofi-ambient-songs",
+      "url": "https://archive.org/download/loyalty-freak-music-lofi-ambient-songs/Loyalty%20Freak%20Music%20-%20LOFI%20AMBIENT%20SONGS%20%21%20-%2001%20Lack%20of%20Color%20-%20Drowning%20in%20your%20smile.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-crying-those-tears.mp3",
+      "title": "Crying Those Tears",
+      "artist": "Loyalty Freak Music",
+      "mood": "lofi",
+      "seconds": 117,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/loyalty-freak-music-lofi-ambient-songs",
+      "url": "https://archive.org/download/loyalty-freak-music-lofi-ambient-songs/Loyalty%20Freak%20Music%20-%20LOFI%20AMBIENT%20SONGS%20%21%20-%2005%20Crying%20those%20tears%20I%27ve%20kept%20so%20long.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-i-hope-you-re-fine.mp3",
+      "title": "I Hope You're Fine",
+      "artist": "Loyalty Freak Music",
+      "mood": "lofi",
+      "seconds": 175,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/loyalty-freak-music-lofi-ambient-songs",
+      "url": "https://archive.org/download/loyalty-freak-music-lofi-ambient-songs/Loyalty%20Freak%20Music%20-%20LOFI%20AMBIENT%20SONGS%20%21%20-%2007%20I%20hope%20you%27re%20happy.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-sunglasses.mp3",
+      "title": "Sunglasses",
+      "artist": "Loyalty Freak Music",
+      "mood": "hiphop",
+      "seconds": 170,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON",
+      "url": "https://archive.org/download/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON/Loyalty_Freak_Music_-_01_-_Sunglasses.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-friend-to-friend.mp3",
+      "title": "Friend to Friend",
+      "artist": "Loyalty Freak Music",
+      "mood": "hiphop",
+      "seconds": 164,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON",
+      "url": "https://archive.org/download/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON/Loyalty_Freak_Music_-_02_-_Friend_to_friend.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-dancing-fool.mp3",
+      "title": "Dancing Fool",
+      "artist": "Loyalty Freak Music",
+      "mood": "hiphop",
+      "seconds": 256,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON",
+      "url": "https://archive.org/download/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON/Loyalty_Freak_Music_-_09_-_Dancing_Fool.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-summer-pride.mp3",
+      "title": "Summer Pride",
+      "artist": "Loyalty Freak Music",
+      "mood": "hiphop",
+      "seconds": 173,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON",
+      "url": "https://archive.org/download/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON/Loyalty_Freak_Music_-_17_-_Summer_Pride.mp3"
+    },
+    {
+      "file": "sectra-loyalty-freak-music-walking-shoes.mp3",
+      "title": "Walking Shoes",
+      "artist": "Loyalty Freak Music",
+      "mood": "hiphop",
+      "seconds": 167,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON",
+      "url": "https://archive.org/download/LoyaltyFreakMusic-INSTRUMENTALRBBEATSTOSINGORRAPON/Loyalty_Freak_Music_-_15_-_Walking_Shoes.mp3"
+    },
+    {
+      "file": "sectra-komiku-balance.mp3",
+      "title": "Balance",
+      "artist": "Komiku",
+      "mood": "chill",
+      "seconds": 206,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-ItsTimeForAdventureVol2",
+      "url": "https://archive.org/download/Komiku-ItsTimeForAdventureVol2/Komiku_-_01_-_Balance.mp3"
+    },
+    {
+      "file": "sectra-komiku-chill-out-theme.mp3",
+      "title": "Chill Out Theme",
+      "artist": "Komiku",
+      "mood": "chill",
+      "seconds": 188,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-ItsTimeForAdventureVol2",
+      "url": "https://archive.org/download/Komiku-ItsTimeForAdventureVol2/Komiku_-_02_-_Chill_Out_Theme.mp3"
+    },
+    {
+      "file": "sectra-komiku-battle-theme.mp3",
+      "title": "Battle Theme",
+      "artist": "Komiku",
+      "mood": "epic",
+      "seconds": 165,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-ItsTimeForAdventureVol2",
+      "url": "https://archive.org/download/Komiku-ItsTimeForAdventureVol2/Komiku_-_03_-_Battle_Theme.mp3"
+    },
+    {
+      "file": "sectra-komiku-down-the-river.mp3",
+      "title": "Down the River",
+      "artist": "Komiku",
+      "mood": "chill",
+      "seconds": 115,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-ItsTimeForAdventureVol2",
+      "url": "https://archive.org/download/Komiku-ItsTimeForAdventureVol2/Komiku_-_05_-_Down_the_river.mp3"
+    },
+    {
+      "file": "sectra-komiku-victory.mp3",
+      "title": "Victory",
+      "artist": "Komiku",
+      "mood": "epic",
+      "seconds": 235,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-ItsTimeForAdventureVol2",
+      "url": "https://archive.org/download/Komiku-ItsTimeForAdventureVol2/Komiku_-_15_-_Victory.mp3"
+    },
+    {
+      "file": "sectra-komiku-opening.mp3",
+      "title": "Opening",
+      "artist": "Komiku",
+      "mood": "epic",
+      "seconds": 122,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-Its_Time_For_Adventure_Vol4",
+      "url": "https://archive.org/download/Komiku-Its_Time_For_Adventure_Vol4/Komiku_-_01_-_Opening.mp3"
+    },
+    {
+      "file": "sectra-komiku-wake-up-heroic-figure.mp3",
+      "title": "Wake Up Heroic Figure",
+      "artist": "Komiku",
+      "mood": "epic",
+      "seconds": 177,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-Its_Time_For_Adventure_Vol4",
+      "url": "https://archive.org/download/Komiku-Its_Time_For_Adventure_Vol4/Komiku_-_11_-_Wake_up_heroic_figure.mp3"
+    },
+    {
+      "file": "sectra-komiku-run-that-boss-was-a-bearing-wall.mp3",
+      "title": "Run! That Boss Was a Bearing Wall",
+      "artist": "Komiku",
+      "mood": "energetic",
+      "seconds": 189,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Komiku-Its_Time_For_Adventure_Vol4",
+      "url": "https://archive.org/download/Komiku-Its_Time_For_Adventure_Vol4/Komiku_-_09_-_Run__That_boss_was_a_bearing_wall_.mp3"
+    },
+    {
+      "file": "sectra-komiku-cliff-road-chill.mp3",
+      "title": "Cliff Road Chill",
+      "artist": "Komiku",
+      "mood": "chill",
+      "seconds": 88,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-cliff-road-chill",
+      "url": "https://archive.org/download/komiku-cliff-road-chill/Komiku%20-%20Cliff%20Road%20Chill.mp3"
+    },
+    {
+      "file": "sectra-komiku-punk-rock-circuit.mp3",
+      "title": "Punk Rock Circuit",
+      "artist": "Komiku",
+      "mood": "rock",
+      "seconds": 154,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-incredible-kart-game",
+      "url": "https://archive.org/download/komiku-incredible-kart-game/Punk%20Rock%20Circuit.mp3"
+    },
+    {
+      "file": "sectra-komiku-rock-n-roll-circuit.mp3",
+      "title": "Rock'n Roll Circuit",
+      "artist": "Komiku",
+      "mood": "rock",
+      "seconds": 92,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-incredible-kart-game",
+      "url": "https://archive.org/download/komiku-incredible-kart-game/Rock%27n%20Roll%20Circuit.mp3"
+    },
+    {
+      "file": "sectra-komiku-metal-circuit.mp3",
+      "title": "Metal Circuit",
+      "artist": "Komiku",
+      "mood": "rock",
+      "seconds": 133,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-incredible-kart-game",
+      "url": "https://archive.org/download/komiku-incredible-kart-game/Metal%20Circuit.mp3"
+    },
+    {
+      "file": "sectra-komiku-flamenco-circuit.mp3",
+      "title": "Flamenco Circuit",
+      "artist": "Komiku",
+      "mood": "world",
+      "seconds": 118,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-incredible-kart-game",
+      "url": "https://archive.org/download/komiku-incredible-kart-game/Flamenco%20Circuit.mp3"
+    },
+    {
+      "file": "sectra-komiku-country-circuit.mp3",
+      "title": "Country Circuit",
+      "artist": "Komiku",
+      "mood": "upbeat",
+      "seconds": 102,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-incredible-kart-game",
+      "url": "https://archive.org/download/komiku-incredible-kart-game/Country%20Circuit.mp3"
+    },
+    {
+      "file": "sectra-komiku-visiting-the-city.mp3",
+      "title": "Visiting the City",
+      "artist": "Komiku",
+      "mood": "upbeat",
+      "seconds": 152,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-incredible-kart-game",
+      "url": "https://archive.org/download/komiku-incredible-kart-game/Visiting%20the%20city%20with%20your%20kart.mp3"
+    },
+    {
+      "file": "sectra-komiku-title-screen.mp3",
+      "title": "Title Screen",
+      "artist": "Komiku",
+      "mood": "energetic",
+      "seconds": 206,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/komiku-incredible-kart-game",
+      "url": "https://archive.org/download/komiku-incredible-kart-game/Title%20screen%20%21.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-dumbo.mp3",
+      "title": "Dumbo",
+      "artist": "Monplaisir",
+      "mood": "comedy",
+      "seconds": 196,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_03_-_Dumbo.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-shy.mp3",
+      "title": "Shy",
+      "artist": "Monplaisir",
+      "mood": "chill",
+      "seconds": 175,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_04_-_Shy.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-ridiculous.mp3",
+      "title": "Ridiculous",
+      "artist": "Monplaisir",
+      "mood": "comedy",
+      "seconds": 249,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_05_-_Ridiculous.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-no-filter.mp3",
+      "title": "No Filter",
+      "artist": "Monplaisir",
+      "mood": "energetic",
+      "seconds": 75,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_10_-_No_Filter.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-some-bad-joke.mp3",
+      "title": "Some Bad Joke",
+      "artist": "Monplaisir",
+      "mood": "comedy",
+      "seconds": 186,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_11_-_Some_Bad_Joke.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-nobody-cares.mp3",
+      "title": "Nobody Cares",
+      "artist": "Monplaisir",
+      "mood": "comedy",
+      "seconds": 134,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_12_-_Nobody_Cares_lalala.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-the-pass.mp3",
+      "title": "The Pass",
+      "artist": "Monplaisir",
+      "mood": "rock",
+      "seconds": 130,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_15_-_The_Pass.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-jam-with-me.mp3",
+      "title": "Jam With Me",
+      "artist": "Monplaisir",
+      "mood": "rock",
+      "seconds": 221,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_16_-_Jam_With_Me.mp3"
+    },
+    {
+      "file": "sectra-monplaisir-fire.mp3",
+      "title": "Fire",
+      "artist": "Monplaisir",
+      "mood": "energetic",
+      "seconds": 185,
+      "license": "CC0-1.0",
+      "source": "https://archive.org/details/Monplaisir-Power_Animal",
+      "url": "https://archive.org/download/Monplaisir-Power_Animal/Monplaisir_-_17_-_Fire.mp3"
+    }
+  ]
+}
