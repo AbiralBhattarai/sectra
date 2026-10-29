@@ -1,0 +1,68 @@
+[project]
+name = "sectra"
+version = "0.1.0"
+description = "Local platform that turns long-form videos into captioned short clips"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "redis>=5.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "httpx>=0.28",
+  "ruff>=0.8",
+]
+# Only the worker image installs these (Dockerfile.worker); locally `uv sync` installs all groups.
+worker = [
+  "yt-dlp[default]>=2026.1.1",
+  "numpy>=2.1",
+  "onnxruntime>=1.20",
+  "faster-whisper>=1.1",
+  "openai>=1.60",
+  "anthropic>=0.40",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev", "worker"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "TID"]
+ignore = ["E501", "N818"]  # N818: keep Reva-style `App*Exception` names
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# Enforce the dependency rule: only a composition root may reach for adapters.
+"src.adapters".msg = "Only a composition root may import adapters."
+
+[tool.ruff.lint.per-file-ignores]
+# Composition roots are the sole permitted importers of src/adapters from outside adapters/.
+"src/config/container.py" = ["TID251"]
+"src/config/worker_container.py" = ["TID251"]
+"src/api_main.py" = ["TID251"]
+"src/worker_main.py" = ["TID251"]
+"alembic/*.py" = ["TID251"]
+# Intra-adapter imports (repositories sharing engine/table/client setup) are fine.
+"src/adapters/**/*.py" = ["TID251"]
+# Adapter tests exercise concrete adapters directly.
+"tests/**/*.py" = ["TID251"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+pythonpath = ["."]
+testpaths = ["tests"]
