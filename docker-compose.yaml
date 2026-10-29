@@ -1,0 +1,95 @@
+name: sectra
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://sectra:sectra@postgres:5432/sectra
+  REDIS_URL: redis://redis:6379/0
+  DATA_DIR: /data
+  DEFAULT_MUSIC_DIR: /opt/music
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sectra
+      POSTGRES_PASSWORD: sectra
+      POSTGRES_DB: sectra
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sectra"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6380:6379"]
+    volumes: [redisdata:/data]
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  migrate:
+    build: { context: ./backend, dockerfile: Dockerfile.api }
+    env_file: [{ path: .env, required: false }]
+    environment: *backend-env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    build: { context: ./backend, dockerfile: Dockerfile.api }
+    env_file: [{ path: .env, required: false }]
+    environment: *backend-env
+    # The SSE stream never ends on its own; without a graceful-shutdown timeout, every
+    # reload/stop waits forever for open browser tabs.
+    command: ["uvicorn", "src.api_main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000",
+              "--reload", "--reload-dir", "src", "--timeout-graceful-shutdown", "2"]
+    ports: ["8000:8000"]
+    volumes:
+      - ./backend/src:/app/src
+      - ./data:/data
+      # Built-in CC0 music library (`make music`).
+      - ./assets/music:/opt/music:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ./backend, dockerfile: Dockerfile.worker }
+    env_file: [{ path: .env, required: false }]
+    environment:
+      <<: *backend-env
+      VAD_MODEL_PATH: /opt/models/silero_vad.onnx
+      FONTS_DIR: /opt/fonts
+    volumes:
+      - ./backend/src:/app/src
+      - ./data:/data
+      # Whisper weights download here on first use and survive rebuilds.
+      - hf-cache:/root/.cache/huggingface
+      # Caption/overlay fonts for libass — the same files the preview loads.
+      - ./assets/fonts:/opt/fonts:ro
+      - ./assets/music:/opt/music:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    stop_grace_period: 40s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build: ./frontend
+    ports: ["5173:5173"]
+    environment:
+      API_TARGET: http://api:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      # Same font files the renderer uses, so the caption preview matches the export.
+      - ./assets/fonts:/app/public/fonts:ro
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:
+  hf-cache:
