@@ -1,0 +1,27 @@
+[project]
+name = "sectra-whisper-server"
+version = "0.1.0"
+description = "Native Whisper on the Apple GPU (MLX) behind an OpenAI-style transcription API, for Sectra"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "mlx-whisper>=0.4.3",
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
+  "python-multipart>=0.0.20",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "httpx>=0.28", "ruff>=0.8"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
