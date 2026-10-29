@@ -1,0 +1,15 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+frontend/dist/
+data/
+.DS_Store
+.idea/
+backend/models/
+# Downloaded by `make music`; only the manifest is committed.
+assets/music/*.mp3
+assets/music/*.part
+whisper-server/.venv/
