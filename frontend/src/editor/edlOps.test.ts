@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  mergeTracking,
+  tracksRanges,
   deleteRange,
   newOverlay,
   nextPlayable,
@@ -11,7 +13,7 @@ import {
   trimRange,
   withRanges,
 } from "./edlOps";
-import type { Edl, Word } from "./types";
+import type { Edl, Tracking, Word } from "./types";
 
 const word = (text: string, start: number, end: number): Word => ({ text, start, end });
 
@@ -23,6 +25,8 @@ function edl(ranges: [number, number][]): Edl {
   return {
     aspect: "9:16",
     crop: { x: 0.5, y: 0.5, scale: 1 },
+    split_screen: false,
+    tracking: null,
     ranges: spans,
     captions: {
       style: "bold-highlight",
@@ -130,5 +134,38 @@ describe("overlays", () => {
     expect(overlaysAt(overlays, 1)).toEqual([0]);
     expect(overlaysAt(overlays, 2.5)).toEqual([0, 1]);
     expect(overlaysAt(overlays, 3)).toEqual([1]);
+  });
+});
+
+describe("mergeTracking", () => {
+  const shot = (start: number, face: number, x = 0.5) => ({ start, face, x, y: 0.5 });
+  const old: Tracking = { enabled: true, span: { start: 10, end: 20 }, shots: [shot(10, 0, 0.3), shot(15, 1)] };
+
+  it("keeps the old (possibly reframed) shots and fills in around them", () => {
+    const fresh: Tracking = {
+      enabled: true,
+      span: { start: 6, end: 26 },
+      shots: [shot(6, 2), shot(12, 0, 0.9), shot(18, 1), shot(24, 0)],
+    };
+    expect(mergeTracking(old, fresh)).toEqual({
+      enabled: true,
+      span: { start: 6, end: 26 },
+      // Fresh 12/18 are inside the old span and dropped; face 1 (fresh, from 18) resumes at 20.
+      shots: [shot(6, 2), shot(10, 0, 0.3), shot(15, 1), shot(20, 1), shot(24, 0)],
+    });
+  });
+
+  it("a fresh shot starting at the old end isn't doubled", () => {
+    const fresh: Tracking = { enabled: true, span: { start: 10, end: 30 }, shots: [shot(10, 0), shot(20, 2)] };
+    expect(mergeTracking(old, fresh).shots.map((s) => s.start)).toEqual([10, 15, 20]);
+  });
+
+  it("with nothing before, the fresh result is used as is", () => {
+    expect(mergeTracking(null, { ...old, enabled: false })).toEqual(old);
+  });
+
+  it("tracksRanges checks the whole edit is covered", () => {
+    expect(tracksRanges(old, [{ start: 11, end: 13 }, { start: 15, end: 20 }])).toBe(true);
+    expect(tracksRanges(old, [{ start: 11, end: 21 }])).toBe(false);
   });
 });

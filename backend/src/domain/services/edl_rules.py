@@ -25,6 +25,14 @@ def validate_edl(edl: Edl, source_duration: float) -> None:
             raise AppValidationException(f"Overlay {index + 1} has no text")
         if overlay.end - overlay.start < MIN_RANGE_SECONDS:
             raise AppValidationException(f"Overlay {index + 1} ends before it starts")
+    if edl.tracking is not None:
+        shots = edl.tracking.shots
+        if not shots:
+            raise AppValidationException("Face tracking has no shots")
+        if abs(shots[0].start - edl.tracking.span.start) > 1e-6:
+            raise AppValidationException("The first shot must start where tracking does")
+        if any(b.start <= a.start for a, b in zip(shots, shots[1:], strict=False)):
+            raise AppValidationException("Shots must be in order")
 
 
 def edl_bounds(edl: Edl) -> TimeSpan:

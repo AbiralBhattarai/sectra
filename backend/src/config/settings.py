@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -35,6 +36,18 @@ class Settings(BaseSettings):
 
     vad_model_path: Path = Path("models/silero_vad.onnx")
     vad_concurrency: int = Field(default=2, ge=1)
+
+    #: Face tracking: YuNet faces + Light-ASD speaking scores (both from Dockerfile.worker).
+    face_model_path: Path = Path("models/face_detection_yunet.onnx")
+    asd_model_path: Path = Path("models/light_asd.onnx")
+    #: Clips tracked at once; each uses up to TRACK_THREADS cores for the model.
+    track_concurrency: int = Field(default=1, ge=1)
+    track_threads: int = Field(default=max(1, (os.cpu_count() or 2) // 2), ge=1)
+    #: Chunk lengths (s) whose scores are averaged: more passes are steadier but slower
+    #: ({1,2,4,6} is ~3x cheaper than the default, which is Light-ASD's demo set).
+    asd_durations: list[int] = [1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 6]
+    #: Shorter shots merge into a neighbour, so the cut doesn't flicker.
+    track_min_shot_seconds: float = Field(default=1.5, gt=0)
 
     #: faster_whisper runs locally in the worker; openai_compat calls STT_BASE_URL
     #: (OpenAI, Groq, or any whisper server with verbose_json word timestamps).

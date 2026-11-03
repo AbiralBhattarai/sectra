@@ -1,7 +1,7 @@
 """Running ffmpeg/ffprobe as async subprocesses, shared by the media and render adapters."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 from src.domain.exceptions import MediaProcessingException
 
@@ -44,6 +44,30 @@ async def run_process(*cmd: str, on_line: OnLine | None = None) -> tuple[int, by
             proc.kill()
             await proc.wait()
         raise
+
+
+async def stream_frames(args: list[str], frame_bytes: int) -> AsyncIterator[bytes]:
+    """Run ffmpeg writing raw video to stdout (``args`` must end in ``pipe:1``) and yield
+    it ``frame_bytes`` at a time. The process is killed if the consumer stops early or
+    its task is cancelled."""
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error", *args,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )  # fmt: skip
+    stderr_task = asyncio.create_task(proc.stderr.read())
+    try:
+        while True:
+            try:
+                yield await proc.stdout.readexactly(frame_bytes)
+            except asyncio.IncompleteReadError:
+                break
+        if await proc.wait() != 0:
+            raise MediaProcessingException(f"ffmpeg failed: {stderr_tail(await stderr_task)}")
+    finally:
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+        stderr_task.cancel()
 
 
 def stderr_tail(stderr: bytes, limit: int = 600) -> str:

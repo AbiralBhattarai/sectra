@@ -46,6 +46,11 @@ class LocalFsStorageAdapter:
         directory.mkdir(parents=True, exist_ok=True)
         return directory / f"{export_id}.{extension}"
 
+    def tracking_path(self, video_id: UUID, job_id: UUID) -> Path:
+        directory = self._videos_root / str(video_id) / "tracking"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"{job_id}.json"
+
     async def save_music(self, name: str, chunks: AsyncIterator[bytes]) -> str:
         self._music_root.mkdir(parents=True, exist_ok=True)
         # Always the user's folder: music_path() would fall back to the read-only

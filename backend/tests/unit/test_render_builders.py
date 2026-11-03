@@ -6,12 +6,13 @@ from src.adapters.output.renderer.srt_builder import build_srt
 from src.domain.enums.caption_style_enum import CaptionStyle
 from src.domain.enums.overlay_style_enum import OverlayStyle
 from src.domain.models.edl import Captions, Edl, Music, Overlay
+from src.domain.models.render import CropMove
 from src.domain.models.speech import TimeSpan
 from src.domain.models.transcript import Word
 from src.domain.services.render_planning import plan_render
 
 
-def plan(style=CaptionStyle.BOLD_HIGHLIGHT, music=None, overlays=()):
+def plan(style=CaptionStyle.BOLD_HIGHLIGHT, music=None, overlays=(), split_screen=False):
     edl = Edl(
         ranges=[TimeSpan(start=10, end=12), TimeSpan(start=20, end=23)],
         captions=Captions(
@@ -23,6 +24,7 @@ def plan(style=CaptionStyle.BOLD_HIGHLIGHT, music=None, overlays=()):
         ),
         overlays=list(overlays),
         music=music,
+        split_screen=split_screen,
     )
     return plan_render(edl, 1920, 1080)
 
@@ -90,3 +92,30 @@ def test_command_without_music_maps_the_voice():
     args = build_command(plan(), Path("s"), None, Path("a"), Path("f"), Path("o"))
     assert "-stream_loop" not in args
     assert args[args.index("-map") + 3] == "[voice]"
+
+
+def test_split_screen_crops_both_halves_and_stacks_them():
+    args = build_command(plan(split_screen=True), Path("s"), None, Path("a"), Path("f"), Path("o"))
+    graph = args[args.index("-filter_complex") + 1]
+    assert (
+        "[cut]split=2[left][right];"
+        "[left]crop=960:854:0:113,scale=1080:960:flags=lanczos[top];"
+        "[right]crop=960:854:960:113,scale=1080:960:flags=lanczos[bottom];"
+        "[top][bottom]vstack=inputs=2,setsar=1,subtitles=filename=a:fontsdir=f[video]"
+    ) in graph
+
+
+def test_tracked_crop_is_a_step_function_of_output_time():
+    tracked = plan().model_copy(
+        update={
+            "crop_moves": [
+                CropMove(time=0, x=80, y=0),
+                CropMove(time=2.5, x=1232, y=0),
+                CropMove(time=4, x=80, y=0),
+            ]
+        }
+    )
+    args = build_command(tracked, Path("s"), None, Path("a"), Path("f"), Path("o"))
+    graph = args[args.index("-filter_complex") + 1]
+    assert "crop=608:1080:'80+1152*gte(t,2.500)-1152*gte(t,4.000)':'0'," in graph
+    assert graph.count("-i") == 0 and args.count("-i") == 2  # still one input per range

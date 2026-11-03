@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mediaUrl } from "../api/client";
 import { CaptionOverlay } from "./CaptionOverlay";
-import { croppedVideoStyle, panCrop } from "./crop";
+import { cropAt, croppedVideoStyle, cropWindow, panCrop, setCropAt, trackingOn } from "./crop";
 import { MusicPlayer } from "./MusicPlayer";
 import { OverlayLayer } from "./OverlayLayer";
 import { nextPlayable, outputDuration, sourceToOutput } from "./edlOps";
@@ -17,17 +17,31 @@ export function Preview() {
 
   const areaRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [area, setArea] = useState({ width: 0, height: 0 });
-  // Crop while dragging/zooming; committed as one undo step on release.
+  // Crop while dragging/zooming; committed as one undo step on release, to the shot
+  // that was under the playhead when the gesture began (face tracking).
   const [draftCrop, setDraftCrop] = useState<Crop | null>(null);
+  const draftTime = useRef(0);
   const drag = useRef<{ x: number; y: number; crop: Crop } | null>(null);
 
   const aspect = ASPECTS[edl.aspect];
-  const crop = draftCrop ?? edl.crop;
+  const crop = draftCrop ?? cropAt(edl, playhead);
   const frame =
     area.width / Math.max(area.height, 1) > aspect
       ? { width: area.height * aspect, height: area.height }
       : { width: area.width, height: area.width / aspect };
+  const sourceWidth = video.width ?? 16;
+  const sourceHeight = video.height ?? 9;
+  // Split screen: each half of the source fills half of the frame, left half on top.
+  const split = edl.split_screen && !trackingOn(edl); // as the render: tracking wins
+  const pane = split
+    ? { width: frame.width, height: frame.height / 2, sourceWidth: sourceWidth / 2, aspect: aspect * 2 }
+    : { width: frame.width, height: frame.height, sourceWidth, aspect };
+  const rect = cropWindow(pane.sourceWidth, sourceHeight, pane.aspect, crop);
+  // Read by the canvas loop, which draws the right half into the bottom pane.
+  const rightRect = useRef(rect);
+  rightRect.current = { ...rect, x: rect.x + pane.sourceWidth };
 
   useLayoutEffect(() => {
     const element = areaRef.current!;
@@ -64,20 +78,38 @@ export function Preview() {
     };
   }, [setMedia, setPlayhead]);
 
+  // The bottom pane is a canvas copying frames from the one <video>, so both halves stay in sync.
+  useEffect(() => {
+    if (!split) return;
+    const media = videoRef.current!;
+    let handle = 0;
+    const draw = () => {
+      const canvas = canvasRef.current;
+      if (canvas && media.readyState >= media.HAVE_CURRENT_DATA) {
+        const { x, y, width, height } = rightRect.current;
+        canvas.getContext("2d")!.drawImage(media, x, y, width, height, 0, 0, canvas.width, canvas.height);
+      }
+      handle = requestAnimationFrame(draw);
+    };
+    handle = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(handle);
+  }, [split]);
+
   const onPointerDown = (event: PointerEvent) => {
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { x: event.clientX, y: event.clientY, crop };
+    draftTime.current = playhead;
   };
   const onPointerMove = (event: PointerEvent) => {
     if (!drag.current || !video.width || !video.height) return;
     const { x, y, crop: start } = drag.current;
     setDraftCrop(
-      panCrop(start, event.clientX - x, event.clientY - y, frame.width, frame.height, video.width, video.height, aspect),
+      panCrop(start, event.clientX - x, event.clientY - y, pane.width, pane.height, pane.sourceWidth, sourceHeight, pane.aspect),
     );
   };
   const commitCrop = () => {
     drag.current = null;
-    if (draftCrop) edit((e) => ({ ...e, crop: draftCrop }));
+    if (draftCrop) edit((e) => setCropAt(e, draftTime.current, draftCrop));
     setDraftCrop(null);
   };
 
@@ -93,14 +125,25 @@ export function Preview() {
           onPointerUp={commitCrop}
           title="Drag to reframe"
         >
-          <video
-            ref={videoRef}
-            src={mediaUrl(video.id, "source.mp4")}
-            style={croppedVideoStyle(video.width ?? 16, video.height ?? 9, aspect, crop)}
-            preload="auto"
-            onLoadedMetadata={() => seek(edl.ranges[0].start)}
-            onClick={togglePlay}
-          />
+          <div className="pane" style={{ height: pane.height }}>
+            <video
+              ref={videoRef}
+              src={mediaUrl(video.id, "source.mp4")}
+              style={croppedVideoStyle(sourceWidth, sourceHeight, rect)}
+              preload="auto"
+              onLoadedMetadata={() => seek(edl.ranges[0].start)}
+              onClick={togglePlay}
+            />
+          </div>
+          {split && (
+            <canvas
+              ref={canvasRef}
+              className="pane"
+              style={{ height: pane.height }}
+              width={Math.round(pane.width * devicePixelRatio)}
+              height={Math.round(pane.height * devicePixelRatio)}
+            />
+          )}
           <CaptionOverlay />
           <OverlayLayer />
         </div>
@@ -121,7 +164,10 @@ export function Preview() {
             max={3}
             step={0.05}
             value={crop.scale}
-            onChange={(event) => setDraftCrop({ ...crop, scale: Number(event.target.value) })}
+            onChange={(event) => {
+              if (!draftCrop) draftTime.current = playhead;
+              setDraftCrop({ ...crop, scale: Number(event.target.value) });
+            }}
             onPointerUp={commitCrop}
             onKeyUp={commitCrop}
           />

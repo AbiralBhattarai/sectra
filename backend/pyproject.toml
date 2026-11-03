@@ -29,6 +29,9 @@ worker = [
   "faster-whisper>=1.1",
   "openai>=1.60",
   "anthropic>=0.40",
+  "opencv-python-headless>=4.10",
+  "python-speech-features>=0.6",
+  "scipy>=1.14",
 ]
 
 [tool.uv]

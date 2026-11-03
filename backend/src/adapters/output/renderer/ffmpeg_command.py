@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.domain.models.render import RenderPlan
+from src.domain.models.render import CropMove, RenderPlan
 
 
 def build_command(
@@ -18,14 +18,24 @@ def build_command(
     if music is not None:
         args += ["-stream_loop", "-1", "-i", str(music)]
 
-    crop = plan.crop
     pairs = "".join(f"[{i}:v:0][{i}:a:0]" for i in range(len(plan.ranges)))
-    filters = [
-        f"{pairs}concat=n={len(plan.ranges)}:v=1:a=1[cut][voice]",
-        f"[cut]crop={crop.width}:{crop.height}:{crop.x}:{crop.y},"
-        f"scale={plan.width}:{plan.height}:flags=lanczos,setsar=1,"
-        f"subtitles=filename={ass}:fontsdir={fonts_dir}[video]",
+    pane_height = plan.height // len(plan.crops)
+    panes = [
+        f"crop={c.width}:{c.height}:{_position(plan.crop_moves, c.x, 'x')}:"
+        f"{_position(plan.crop_moves, c.y, 'y')},scale={plan.width}:{pane_height}:flags=lanczos"
+        for c in plan.crops
     ]
+    finish = f"setsar=1,subtitles=filename={ass}:fontsdir={fonts_dir}[video]"
+    filters = [f"{pairs}concat=n={len(plan.ranges)}:v=1:a=1[cut][voice]"]
+    if len(panes) == 1:
+        filters.append(f"[cut]{panes[0]},{finish}")
+    else:
+        filters += [
+            "[cut]split=2[left][right]",
+            f"[left]{panes[0]}[top]",
+            f"[right]{panes[1]}[bottom]",
+            f"[top][bottom]vstack=inputs=2,{finish}",
+        ]
     audio = "[voice]"
     if music is not None and plan.music_volume is not None:
         filters.append(
@@ -50,3 +60,18 @@ def build_command(
         "-movflags", "+faststart",
         str(output),
     ]  # fmt: skip
+
+
+def _position(moves: list[CropMove], fixed: int, axis: str) -> str:
+    """The crop's x or y: a constant, or (face tracking) a step function of output time
+    written flat — first value plus each jump times ``gte(t, when)`` — that the crop
+    filter evaluates per frame. Quoted so its commas don't split the filter chain."""
+    if not moves:
+        return str(fixed)
+    values = [getattr(m, axis) for m in moves]
+    expr = str(values[0])
+    for move, previous, value in zip(moves[1:], values, values[1:], strict=False):
+        if value != previous:
+            delta = value - previous
+            expr += f"{'+' if delta > 0 else '-'}{abs(delta)}*gte(t,{move.time:.3f})"
+    return f"'{expr}'"

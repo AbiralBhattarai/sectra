@@ -25,7 +25,7 @@ body {
 .app {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 320px;
-  grid-template-rows: minmax(0, 1fr) 200px;
+  grid-template-rows: minmax(0, 1fr) 222px; /* fits every timeline lane, incl. face-tracking shots */
   grid-template-areas:
     "sources editor clips"
     "timeline timeline timeline";
@@ -364,6 +364,15 @@ button.danger {
 .frame video {
   position: absolute;
   max-width: none;
+  pointer-events: none;
+}
+
+/* One pane per stacked source window (two for a split screen). */
+.frame .pane {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -763,6 +772,25 @@ label.button {
 .overlay-lane span.selected {
   outline: 1px solid #b197fc;
 }
+
+.shots-lane {
+  height: 18px;
+}
+
+.shots-lane span {
+  border-left: 2px solid var(--text);
+  font-size: 10px;
+  line-height: 18px;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.shots-lane .face-0 { background: #1f4a5a; }
+.shots-lane .face-1 { background: #5a3a1f; }
+.shots-lane .face-2 { background: #2f5a1f; }
+.shots-lane .face-3 { background: #5a1f45; }
 
 .export-list {
   list-style: none;

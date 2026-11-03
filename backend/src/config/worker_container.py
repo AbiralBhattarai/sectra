@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 
 from src.adapters.input.worker.redis_stream_consumer import RedisStreamConsumer
 from src.adapters.output.downloader.yt_dlp_adapter import YtDlpAdapter
+from src.adapters.output.face.onnx_face_tracker_adapter import OnnxFaceTrackerAdapter
 from src.adapters.output.llm.anthropic_adapter import AnthropicLLMAdapter
 from src.adapters.output.llm.openai_compat_adapter import OpenAICompatLLMAdapter
 from src.adapters.output.media.ffmpeg_media_adapter import FfmpegMediaAdapter
@@ -16,6 +17,7 @@ from src.adapters.output.stt.faster_whisper_adapter import FasterWhisperAdapter
 from src.adapters.output.stt.openai_compat_stt_adapter import OpenAICompatSTTAdapter
 from src.adapters.output.vad.silero_onnx_adapter import SileroOnnxAdapter
 from src.application.services.clip_export_service import ClipExportService
+from src.application.services.clip_tracking_service import ClipTrackingService
 from src.application.services.highlight_analysis_service import HighlightAnalysisService
 from src.application.services.ingest_service import IngestService
 from src.application.services.media_preparation_service import MediaPreparationService
@@ -56,6 +58,14 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
     vad = SileroOnnxAdapter(
         settings.vad_model_path, asyncio.Semaphore(settings.vad_concurrency), core.executor
     )
+    face_tracker = OnnxFaceTrackerAdapter(
+        settings.face_model_path,
+        settings.asd_model_path,
+        asyncio.Semaphore(settings.track_concurrency),
+        core.executor,
+        threads=settings.track_threads,
+        durations=settings.asd_durations,
+    )
     stt = _build_stt(settings, core.executor, closers)
     llm = _build_llm(settings, closers)
 
@@ -93,6 +103,15 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
                 storage=core.storage,
                 scheduler=core.scheduler,
                 renderer=renderer,
+            ),
+            JobType.TRACK: ClipTrackingService(
+                clips=core.clips,
+                videos=core.videos,
+                jobs=core.jobs,
+                storage=core.storage,
+                scheduler=core.scheduler,
+                tracker=face_tracker,
+                min_shot_seconds=settings.track_min_shot_seconds,
             ),
         },
         max_attempts=settings.job_max_attempts,

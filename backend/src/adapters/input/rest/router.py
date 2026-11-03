@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from src.adapters.input.rest import clips, events, exports, health, jobs, music, videos
+from src.adapters.input.rest import (
+    clips,
+    events,
+    exports,
+    health,
+    jobs,
+    music,
+    tracking,
+    videos,
+)
 
 
 def build_router() -> APIRouter:
@@ -12,4 +21,5 @@ def build_router() -> APIRouter:
     router.include_router(clips.router)
     router.include_router(music.router)
     router.include_router(exports.router)
+    router.include_router(tracking.router)
     return router
