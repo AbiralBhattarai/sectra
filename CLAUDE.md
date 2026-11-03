@@ -177,6 +177,27 @@ Export (EXPORT job, `jobs:render` stream):
 - ffmpeg subprocess handling lives in `adapters/output/media/ffmpeg_process.py`,
   shared by media prep and rendering; both use one ffmpeg semaphore.
 
+Face tracking (TRACK job, `jobs:tracking` stream):
+- "Face tracking" checkbox → `POST /api/clips/{id}/tracking` → a TRACK job over the clip's
+  bounds ± 2 s. A queued/running/succeeded job that covers the ranges is **reused**.
+  The worker writes `data/videos/<video_id>/tracking/<job_id>.json`; the **editor**
+  applies it to the EDL (`GET /api/tracking/{job_id}` → `mergeTracking`), so autosave
+  can't clobber it. Trimming past `tracking.span` re-tracks and keeps the old shots.
+- `OnnxFaceTrackerAdapter`: ffmpeg streams 25 fps `bgr24` (long side ≤ 1280) → YuNet
+  faces → greedy IoU tracker → Light-ASD scores per frame from 112 px grayscale crops +
+  MFCC (`python_speech_features`, must match training). It holds its own semaphore, not
+  the ffmpeg one (the decode lasts the whole job). ~0.6–1.2× realtime on CPU.
+- Light-ASD is PyTorch-only upstream: `Dockerfile.worker`'s `asd-export` stage converts
+  it with `scripts/export_light_asd.py` (pinned commit, checksummed weights, ONNX vs torch
+  check), so torch never reaches the runtime image. Its audio encoder's `MaxPool3d` on
+  4-D input doesn't export; the script swaps in the equivalent `MaxPool2d`.
+- `speaker_shots.build_shots` (pure): joins track pieces of one person, picks the top
+  positive score per frame (held through silence), merges shots < 1.5 s.
+- `Edl.tracking.shots` are source time with x/y only; **zoom is shared** (`edl.crop.scale`)
+  so the crop size never changes and the render switches position with a step
+  expression in the crop filter (`RenderPlan.crop_moves`) — no extra inputs.
+  `framing.crop_at` ≡ `crop.ts cropAt`. Tracking on ⇒ `split_screen` is ignored.
+
 ## Things that will bite you
 
 - **SSE and shutdown:** `/api/events` never ends, so uvicorn must run with
@@ -214,6 +235,10 @@ Editor (`frontend/src/editor/`, `timeline/`):
   (`docker compose exec web npx vitest run`). `captions.paginate` and
   `crop.cropWindow` define what the export must reproduce — the backend renderer
   has to port them exactly.
+- `Edl.split_screen` ("OmeTV split"): left half of the source over the right half;
+  `crop` frames each half identically (`crop_window(..., split=True)`). The preview's
+  bottom pane is a `<canvas>` drawn from the one `<video>` every frame — a second
+  `<video>` would drift. The render does `split → crop ×2 → vstack`.
 - Captions follow the ranges (`withRanges`): edited words that stay kept are
   preserved; newly kept stretches are filled from the transcript.
 - `useAutosave` PUTs the EDL 800 ms after the last change, one request at a time,

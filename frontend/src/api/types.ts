@@ -7,7 +7,8 @@ export type JobType =
   | "vad"
   | "transcribe"
   | "analyze"
-  | "export";
+  | "export"
+  | "track";
 
 /** Mirrors the backend `JobEvent` pushed over /api/events. */
 export interface JobEvent {

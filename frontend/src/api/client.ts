@@ -1,5 +1,5 @@
-import type { ClipDetail, Edl, MusicTrack } from "../editor/types";
-import type { Clip, Export, Video, VideoFile } from "./types";
+import type { ClipDetail, Edl, MusicTrack, Tracking } from "../editor/types";
+import type { Clip, Export, Job, Video, VideoFile } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -82,6 +82,12 @@ export const listExports = (clipId: string) => request<Export[]>(`/api/clips/${c
 
 export const requestExport = (clipId: string) =>
   request<Export>(`/api/clips/${clipId}/exports`, { method: "POST" });
+
+/** A face-tracking job covering the clip's ranges (an existing one when it can). */
+export const requestTracking = (clipId: string) =>
+  request<Job>(`/api/clips/${clipId}/tracking`, { method: "POST" });
+
+export const getTracking = (jobId: string) => request<Tracking>(`/api/tracking/${jobId}`);
 
 export const findClipsAgain = (videoId: string) =>
   request<unknown>(`/api/videos/${videoId}/analyze`, { method: "POST" });

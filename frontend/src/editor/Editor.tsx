@@ -8,6 +8,7 @@ import { SidePanel } from "./SidePanel";
 import { redo, undo, useEditor } from "./store";
 import type { AspectRatio } from "./types";
 import { useAutosave } from "./useAutosave";
+import { useFaceTracking, withoutTracking } from "./useFaceTracking";
 
 interface Props {
   clipId: string;
@@ -55,6 +56,7 @@ function Toolbar() {
   const canUndo = useStore(useEditor.temporal, (s) => s.pastStates.length > 0);
   const canRedo = useStore(useEditor.temporal, (s) => s.futureStates.length > 0);
   const { edit } = useEditor.getState();
+  const faces = useFaceTracking();
 
   return (
     <header className="toolbar">
@@ -70,6 +72,27 @@ function Toolbar() {
         <option value="1:1">1:1</option>
         <option value="16:9">16:9</option>
       </select>
+      <label className="checkbox" title="Stack the left half of the video over the right half">
+        <input
+          type="checkbox"
+          checked={edl.split_screen && !faces.checked}
+          onChange={(event) => {
+            const on = event.target.checked;
+            if (on) faces.stop();
+            edit((e) => ({ ...(on ? withoutTracking(e) : e), split_screen: on }));
+          }}
+        />
+        OmeTV split
+      </label>
+      <label
+        className="checkbox"
+        title={faces.state?.error ?? "Cut to whoever is speaking (drag the preview to reframe a shot)"}
+      >
+        <input type="checkbox" checked={faces.checked} onChange={(event) => faces.toggle(event.target.checked)} />
+        Face tracking
+        {faces.state?.status === "tracking" && ` ${Math.round(faces.state.progress * 100)}%`}
+        {faces.state?.status === "failed" && <span className="error"> failed</span>}
+      </label>
       <button type="button" onClick={splitAtPlayhead} title="Split at playhead (S)">
         Split
       </button>

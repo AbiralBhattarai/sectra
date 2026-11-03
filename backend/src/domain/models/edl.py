@@ -39,11 +39,38 @@ class Music(BaseModel):
     duck: bool = True
 
 
+class Shot(BaseModel):
+    """One camera position chosen by face tracking; runs until the next shot starts."""
+
+    #: Source time.
+    start: float
+    #: The tracked face this shot frames (for labels only).
+    face: int
+    #: Crop centre as fractions of the source frame; zoom is the shared ``Edl.crop.scale``.
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
+class Tracking(BaseModel):
+    """Active-speaker framing: hard cuts between shots of whoever is talking."""
+
+    #: The checkbox; the shots are kept while it is off.
+    enabled: bool = True
+    #: Source span the tracker analysed.
+    span: TimeSpan
+    #: Sorted by start; the first starts at ``span.start``.
+    shots: list[Shot]
+
+
 class Edl(BaseModel):
     """Edit decision list: everything needed to preview or render one clip."""
 
     aspect: AspectRatio = AspectRatio.VERTICAL
     crop: Crop = Field(default_factory=Crop)
+    #: Left and right halves of the source stacked top/bottom (e.g. OmeTV's two cameras);
+    #: ``crop`` frames each half the same way.
+    split_screen: bool = False
+    tracking: Tracking | None = None
     #: Kept stretches of the source, played back to back.
     ranges: list[TimeSpan]
     captions: Captions

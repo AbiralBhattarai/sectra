@@ -10,18 +10,21 @@ class JobType(StrEnum):
     TRANSCRIBE = "transcribe"
     ANALYZE = "analyze"
     EXPORT = "export"
+    TRACK = "track"
 
     @property
     def stream(self) -> str:
-        """Redis stream the job is queued on. Rendering gets its own stream so an
-        export is never stuck behind a long transcription."""
-        return "jobs:render" if self is JobType.EXPORT else "jobs:analysis"
+        """Redis stream the job is queued on. Rendering and face tracking get their own
+        streams so neither is stuck behind a long transcription, or behind each other."""
+        return _STREAMS.get(self, "jobs:analysis")
 
     @property
     def next_stage(self) -> "JobType | None":
         """Stage queued automatically after this one succeeds."""
         return _NEXT_STAGE.get(self)
 
+
+_STREAMS = {JobType.EXPORT: "jobs:render", JobType.TRACK: "jobs:tracking"}
 
 _NEXT_STAGE = {
     JobType.INGEST: JobType.NORMALIZE,

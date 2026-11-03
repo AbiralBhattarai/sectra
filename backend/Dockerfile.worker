@@ -1,3 +1,19 @@
+# Light-ASD (active-speaker detection, MIT) ships as PyTorch weights; convert it to ONNX
+# here so torch never reaches the runtime image. Pinned to a commit; the script checks
+# the weights' sha256 and that the ONNX graph matches torch.
+FROM python:3.12-slim AS asd-export
+RUN pip install --no-cache-dir torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir onnx==1.19.1 onnxruntime==1.23.2 numpy
+ADD --keep-git-dir=false \
+    https://github.com/Junhua-Liao/Light-ASD.git#ed38c232de5efe0261dbd68627c0ade7cdfe14eb \
+    /light-asd
+COPY scripts/export_light_asd.py /export_light_asd.py
+RUN python /export_light_asd.py /light-asd /out/light_asd.onnx
+
+# `make models` exports this stage to backend/models/ for host tests.
+FROM scratch AS asd-model
+COPY --from=asd-export /out/light_asd.onnx /
+
 FROM python:3.12-slim
 
 # ffmpeg for all media work; Deno is the JS runtime yt-dlp needs to solve YouTube challenges.
@@ -10,6 +26,11 @@ COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 ADD --checksum=sha256:1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3 \
     https://github.com/snakers4/silero-vad/raw/v6.2.3/src/silero_vad/data/silero_vad.onnx \
     /opt/models/silero_vad.onnx
+# YuNet face detector (opencv_zoo, MIT), pinned to a commit and checksummed.
+ADD --checksum=sha256:8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4 \
+    https://github.com/opencv/opencv_zoo/raw/f12e12798e8314f7c074a6656816c048dcc95b7a/models/face_detection_yunet/face_detection_yunet_2023mar.onnx \
+    /opt/models/face_detection_yunet.onnx
+COPY --from=asd-export /out/light_asd.onnx /opt/models/light_asd.onnx
 
 COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
@@ -17,7 +38,9 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
-    VAD_MODEL_PATH=/opt/models/silero_vad.onnx
+    VAD_MODEL_PATH=/opt/models/silero_vad.onnx \
+    FACE_MODEL_PATH=/opt/models/face_detection_yunet.onnx \
+    ASD_MODEL_PATH=/opt/models/light_asd.onnx
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./

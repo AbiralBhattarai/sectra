@@ -26,11 +26,22 @@ class CropBox(BaseModel):
     height: int
 
 
+class CropMove(BaseModel):
+    """From output time ``time`` on, the crop window's top-left is at (x, y)."""
+
+    time: float
+    x: int
+    y: int
+
+
 class RenderPlan(BaseModel):
     """Everything the renderer needs, already resolved to output time and pixels."""
 
     ranges: list[TimeSpan]  # source time, played back to back
-    crop: CropBox
+    #: Source windows stacked top to bottom: one, or two for a split screen.
+    crops: list[CropBox]
+    #: Face tracking: where the (single) crop jumps; empty when it never moves.
+    crop_moves: list[CropMove] = []
     width: int
     height: int
     duration: float

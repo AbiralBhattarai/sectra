@@ -24,6 +24,9 @@ models:
 	mkdir -p backend/models
 	curl -sSfL -o backend/models/silero_vad.onnx \
 		https://github.com/snakers4/silero-vad/raw/v6.2.3/src/silero_vad/data/silero_vad.onnx
+	curl -sSfL -o backend/models/face_detection_yunet.onnx \
+		https://github.com/opencv/opencv_zoo/raw/f12e12798e8314f7c074a6656816c048dcc95b7a/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+	docker build -f backend/Dockerfile.worker --target asd-model -o backend/models backend
 
 # Default background-music library (90 CC0 tracks, ~600 MB) listed in assets/music/manifest.json.
 music:

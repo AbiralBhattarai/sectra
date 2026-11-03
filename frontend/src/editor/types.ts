@@ -42,9 +42,34 @@ export interface Music {
   duck: boolean;
 }
 
+/** One camera position chosen by face tracking; runs until the next shot starts. */
+export interface Shot {
+  /** Source time. */
+  start: number;
+  /** The tracked face this shot frames (labels only). */
+  face: number;
+  /** Crop centre as fractions of the source frame; zoom is the shared `Edl.crop.scale`. */
+  x: number;
+  y: number;
+}
+
+/** Active-speaker framing: hard cuts between shots of whoever is talking. */
+export interface Tracking {
+  /** The checkbox; shots are kept while it is off. */
+  enabled: boolean;
+  /** Source span the tracker analysed. */
+  span: Span;
+  /** Sorted by start; the first starts at `span.start`. */
+  shots: Shot[];
+}
+
 export interface Edl {
   aspect: AspectRatio;
   crop: Crop;
+  /** Left and right halves of the source stacked top/bottom (e.g. OmeTV's two cameras);
+   * `crop` frames each half the same way. */
+  split_screen: boolean;
+  tracking: Tracking | null;
   ranges: Span[];
   captions: { words: Word[]; style: CaptionStyle };
   overlays: Overlay[];

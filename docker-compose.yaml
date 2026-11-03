@@ -62,6 +62,8 @@ services:
     environment:
       <<: *backend-env
       VAD_MODEL_PATH: /opt/models/silero_vad.onnx
+      FACE_MODEL_PATH: /opt/models/face_detection_yunet.onnx
+      ASD_MODEL_PATH: /opt/models/light_asd.onnx
       FONTS_DIR: /opt/fonts
     volumes:
       - ./backend/src:/app/src

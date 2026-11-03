@@ -14,6 +14,7 @@ from src.adapters.output.storage.local_fs_storage_adapter import LocalFsStorageA
 from src.adapters.output.storage.music_manifest import load_default_tracks
 from src.application.services.clip_editing_service import ClipEditingService
 from src.application.services.clip_export_service import ClipExportService
+from src.application.services.clip_tracking_service import ClipTrackingService
 from src.application.services.job_scheduler import JobScheduler
 from src.application.services.job_service import JobService
 from src.application.services.music_library_service import MusicLibraryService
@@ -39,6 +40,7 @@ class Container:
     clip_editing: ClipEditingService
     music_library: MusicLibraryService
     clip_export: ClipExportService
+    clip_tracking: ClipTrackingService
     #: Drains driven adapters on shutdown — closes Redis, the Postgres pool and the threads.
     aclose: Callable[[], Awaitable[None]]
 
@@ -80,6 +82,9 @@ def build_container(settings: Settings) -> Container:
             storage=storage, defaults=load_default_tracks(settings.default_music_dir)
         ),
         clip_export=ClipExportService(
+            clips=clips, videos=videos, jobs=jobs, storage=storage, scheduler=scheduler
+        ),
+        clip_tracking=ClipTrackingService(
             clips=clips, videos=videos, jobs=jobs, storage=storage, scheduler=scheduler
         ),
         aclose=aclose,

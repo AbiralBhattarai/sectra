@@ -38,6 +38,11 @@ class FileStoragePort(Protocol):
         video deletes its exports). The directory is created if missing."""
         ...
 
+    def tracking_path(self, video_id: UUID, job_id: UUID) -> Path:
+        """Where a TRACK job's shots (JSON) go, inside the video's directory. The
+        directory is created if missing."""
+        ...
+
     async def save_music(self, name: str, chunks: AsyncIterator[bytes]) -> str:
         """Stream an uploaded track into the music library under the given file name."""
         ...

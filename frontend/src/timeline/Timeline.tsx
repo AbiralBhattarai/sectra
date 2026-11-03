@@ -178,6 +178,26 @@ function TimelineView() {
             );
           })}
         </div>
+        {shown.tracking?.enabled && (
+          <div className="lane shots-lane" title="Face tracking shots (drag the preview to reframe one)">
+            {shown.tracking.shots.map((shot, index, shots) => {
+              const end = shots[index + 1]?.start ?? shown.tracking!.span.end;
+              return (
+                <span
+                  key={shot.start}
+                  className={`face-${shot.face % 4}`}
+                  style={{ left: x(shot.start), width: Math.max(2, x(end) - x(shot.start)) }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    seek(shot.start);
+                  }}
+                >
+                  Face {shot.face + 1}
+                </span>
+              );
+            })}
+          </div>
+        )}
         <div className="playhead" style={{ left: x(playhead) }} />
       </div>
     </section>
@@ -203,7 +223,8 @@ function Ruler({ view, width }: { view: Span; width: number }) {
 
 function Waveform({ peaks, view, width }: { peaks: Peaks | null; view: Span; width: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const maxPeak = useMemo(() => (peaks ? Math.max(0.01, ...peaks.peaks) : 1), [peaks]);
+  // reduce, not Math.max(...peaks): a long video has more samples than the stack allows arguments.
+  const maxPeak = useMemo(() => (peaks ? peaks.peaks.reduce((m, v) => Math.max(m, v), 0.01) : 1), [peaks]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -1,4 +1,4 @@
-import type { Edl, Overlay, Span, Word } from "./types";
+import type { Edl, Overlay, Span, Tracking, Word } from "./types";
 
 /** Matches the backend's MIN_RANGE_SECONDS. */
 export const MIN_RANGE = 0.1;
@@ -116,4 +116,27 @@ export function newOverlay(at: number, clipDuration: number): Overlay {
 /** Overlays on screen at output time `t`. */
 export function overlaysAt(overlays: Overlay[], t: number): number[] {
   return overlays.flatMap((o, index) => (t >= o.start && t < o.end ? [index] : []));
+}
+
+/** Whether face tracking analysed every kept second. */
+export function tracksRanges(tracking: Tracking, ranges: Span[]): boolean {
+  return tracking.span.start <= ranges[0].start && tracking.span.end >= ranges[ranges.length - 1].end;
+}
+
+/** A fresh tracking result over the clip's previous one (after trimming past it): shots
+ * inside the old span are kept as they are, since the user may have reframed them, and
+ * the fresh shots fill in before and after it. */
+export function mergeTracking(old: Tracking | null, fresh: Tracking): Tracking {
+  if (!old) return { ...fresh, enabled: true };
+  const { start, end } = old.span;
+  const before = fresh.shots.filter((s) => s.start < start);
+  const after = fresh.shots.filter((s) => s.start >= end);
+  // Whoever the fresh result frames at the old span's end carries on from there.
+  const atEnd = [...fresh.shots].reverse().find((s) => s.start < end);
+  const resume = fresh.span.end > end && atEnd && after[0]?.start !== end ? [{ ...atEnd, start: end }] : [];
+  return {
+    enabled: true,
+    span: { start: Math.min(start, fresh.span.start), end: Math.max(end, fresh.span.end) },
+    shots: [...before, ...old.shots, ...resume, ...after],
+  };
 }
