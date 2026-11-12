@@ -103,6 +103,7 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
                 storage=core.storage,
                 scheduler=core.scheduler,
                 renderer=renderer,
+                media=media,
             ),
             JobType.TRACK: ClipTrackingService(
                 clips=core.clips,
@@ -111,6 +112,7 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
                 storage=core.storage,
                 scheduler=core.scheduler,
                 tracker=face_tracker,
+                editing=core.clip_editing,
                 min_shot_seconds=settings.track_min_shot_seconds,
             ),
         },

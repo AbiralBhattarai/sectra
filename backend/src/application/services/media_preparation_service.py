@@ -2,6 +2,7 @@ import asyncio
 
 from src.application.services.pipeline_dispatcher import ProgressCallback
 from src.domain.enums.video_file_enum import VideoFile
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.exceptions import MediaProcessingException, NotFoundException
 from src.domain.models.job import Job
 from src.domain.models.video import Video
@@ -33,7 +34,8 @@ class MediaPreparationService:
             raise MediaProcessingException("No downloaded or uploaded file to process")
 
         info = await self._media.probe(raw)
-        if info.audio_codec is None:
+        # Assets (B-roll) may be silent; a source needs speech to clip.
+        if info.audio_codec is None and video.kind is VideoKind.SOURCE:
             raise MediaProcessingException(
                 "Video has no audio track, so there is no speech to clip"
             )
@@ -60,6 +62,8 @@ class MediaPreparationService:
         )
 
         async def audio_and_peaks() -> None:
+            if (await self._media.probe(source)).audio_codec is None:
+                return  # a silent asset: no waveform
             await self._media.extract_audio(source, audio)
             await report(0.6)
             await self._media.compute_peaks(audio, peaks, PEAKS_PER_SECOND)

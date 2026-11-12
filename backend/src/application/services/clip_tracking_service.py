@@ -6,13 +6,18 @@ from src.application.services.pipeline_dispatcher import ProgressCallback
 from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_file_enum import VideoFile
-from src.domain.exceptions import MediaProcessingException, NotFoundException
+from src.domain.exceptions import (
+    AppValidationException,
+    MediaProcessingException,
+    NotFoundException,
+)
 from src.domain.models.edl import Tracking
 from src.domain.models.face_track import FRAME_RATE
 from src.domain.models.job import Job
 from src.domain.models.speech import TimeSpan
 from src.domain.services.edl_rules import edl_bounds
 from src.domain.services.speaker_shots import build_shots
+from src.ports.input.clip_editing_port import ClipEditingPort
 from src.ports.output.clip_repository import ClipRepository
 from src.ports.output.face_tracker_port import FaceTrackerPort
 from src.ports.output.file_storage_port import FileStoragePort
@@ -25,8 +30,9 @@ _PADDING = 2.0
 
 class ClipTrackingService:
     """Requests face tracking (API side) and runs the TRACK stage (worker side). Like an
-    export, a TRACK job belongs to the clip, not the video. The worker only writes the
-    result file; the editor applies it to the EDL, so autosave can't overwrite it."""
+    export, a TRACK job belongs to the clip, not the video. The worker writes the result
+    file and merges it into the clip's EDL as a revision of its own (the open editor
+    picks it up from the clip event)."""
 
     def __init__(
         self,
@@ -36,6 +42,7 @@ class ClipTrackingService:
         storage: FileStoragePort,
         scheduler: JobScheduler,
         tracker: FaceTrackerPort | None = None,
+        editing: ClipEditingPort | None = None,
         min_shot_seconds: float = 1.5,
     ) -> None:
         self._clips = clips
@@ -44,6 +51,7 @@ class ClipTrackingService:
         self._storage = storage
         self._scheduler = scheduler
         self._tracker = tracker
+        self._editing = editing
         self._min_shot_seconds = min_shot_seconds
 
     async def request_tracking(self, clip_id: UUID) -> Job:
@@ -54,6 +62,8 @@ class ClipTrackingService:
         if video is None or video.duration is None:
             raise NotFoundException(f"Video {clip.video_id} not found")
         bounds = edl_bounds(clip.edl)
+        if bounds is None:
+            raise AppValidationException("Face tracking needs part of the clip's own video")
         for job in await self._jobs.list_for_clip(clip_id, JobType.TRACK):
             covered = TimeSpan.model_validate(job.payload["span"])
             if (
@@ -85,7 +95,7 @@ class ClipTrackingService:
 
     async def __call__(self, job: Job, report: ProgressCallback) -> None:
         """TRACK stage."""
-        if self._tracker is None:
+        if self._tracker is None or self._editing is None:
             raise RuntimeError("ClipTrackingService was built without a face tracker")
         video_id = UUID(job.payload["video_id"])
         video = await self._videos.get(video_id)
@@ -102,6 +112,8 @@ class ClipTrackingService:
         shots = build_shots(tracks, span, FRAME_RATE, self._min_shot_seconds)
         if not shots:
             raise MediaProcessingException("No faces found in this clip")
-        result = Tracking(span=span, shots=shots).model_dump_json()
+        result = Tracking(span=span, shots=shots)
         path = self._storage.tracking_path(video_id, job.id)
-        await asyncio.to_thread(path.write_text, result)
+        await asyncio.to_thread(path.write_text, result.model_dump_json())
+        if job.clip_id is not None:
+            await self._editing.apply_tracking(job.clip_id, result)

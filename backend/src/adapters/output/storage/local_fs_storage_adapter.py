@@ -12,14 +12,15 @@ _WRITE_BUFFER = 4 * 1024 * 1024
 
 
 class LocalFsStorageAdapter:
-    """Lays files out as ``<root>/videos/<video_id>/<file>`` and ``<root>/music/<name>``;
-    music not uploaded there is looked up in the read-only built-in library."""
+    """Lays files out as ``<root>/videos/<video_id>/<file>``, ``<root>/music/<name>`` and
+    ``<root>/images/<name>``; music not uploaded there is looked up in the read-only built-in library."""
 
     def __init__(
         self, root: Path, executor: Executor, default_music_dir: Path | None = None
     ) -> None:
         self._videos_root = root / "videos"
         self._music_root = root / "music"
+        self._images_root = root / "images"
         self._default_music_root = default_music_dir
         self._executor = executor
 
@@ -73,6 +74,24 @@ class LocalFsStorageAdapter:
         if uploaded.is_file() or self._default_music_root is None:
             return uploaded
         return self._default_music_root / name
+
+    async def save_image(self, name: str, chunks: AsyncIterator[bytes]) -> str:
+        self._images_root.mkdir(parents=True, exist_ok=True)
+        dest = self._images_root / name
+        try:
+            await self._stream_to(dest, chunks)
+        except BaseException:
+            dest.unlink(missing_ok=True)
+            raise
+        return name
+
+    def list_images(self) -> list[str]:
+        if not self._images_root.is_dir():
+            return []
+        return sorted(p.name for p in self._images_root.iterdir() if p.is_file())
+
+    def image_path(self, name: str) -> Path:
+        return self._images_root / name
 
     async def _stream_to(self, dest: Path, chunks: AsyncIterator[bytes]) -> None:
         handle = await run_blocking(self._executor, open, dest, "wb")

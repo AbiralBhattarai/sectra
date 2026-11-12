@@ -3,6 +3,7 @@ from fastapi import Request
 from src.ports.input.clip_editing_port import ClipEditingPort
 from src.ports.input.clip_export_port import ClipExportPort
 from src.ports.input.clip_tracking_port import ClipTrackingPort
+from src.ports.input.image_library_port import ImageLibraryPort
 from src.ports.input.job_management_port import JobManagementPort
 from src.ports.input.music_library_port import MusicLibraryPort
 from src.ports.input.video_library_port import VideoLibraryPort
@@ -22,6 +23,10 @@ def get_clip_editing(request: Request) -> ClipEditingPort:
 
 def get_music_library(request: Request) -> MusicLibraryPort:
     return request.app.state.container.music_library
+
+
+def get_image_library(request: Request) -> ImageLibraryPort:
+    return request.app.state.container.image_library
 
 
 def get_clip_export(request: Request) -> ClipExportPort:

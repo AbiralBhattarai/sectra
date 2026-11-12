@@ -4,7 +4,8 @@ from collections.abc import AsyncIterator
 from typing import Protocol
 from uuid import UUID
 
-from src.domain.models.job import Job, JobEvent
+from src.domain.models.app_event import AppEvent
+from src.domain.models.job import Job
 
 
 class JobManagementPort(Protocol):
@@ -16,7 +17,7 @@ class JobManagementPort(Protocol):
         """Return the job; raises ``NotFoundException`` when it does not exist."""
         ...
 
-    def events(self) -> AsyncIterator[JobEvent]:
+    def events(self) -> AsyncIterator[AppEvent]:
         """Live stream of job progress events."""
         ...
 

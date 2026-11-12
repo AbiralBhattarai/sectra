@@ -55,6 +55,18 @@ class FileStoragePort(Protocol):
         """Location of a track: an upload, else a built-in one (it may not exist)."""
         ...
 
+    async def save_image(self, name: str, chunks: AsyncIterator[bytes]) -> str:
+        """Stream an uploaded image into the image library under the given file name."""
+        ...
+
+    def list_images(self) -> list[str]:
+        """File names in the image library, sorted."""
+        ...
+
+    def image_path(self, name: str) -> Path:
+        """Location of an image in the library (it may not exist)."""
+        ...
+
     async def delete_video(self, video_id: UUID) -> None:
         """Remove every file of the video."""
         ...

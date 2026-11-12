@@ -1,10 +1,9 @@
-import { temporal } from "zundo";
 import { create } from "zustand";
 import type { Video } from "../api/types";
-import { nextPlayable } from "./edlOps";
+import { outputDuration } from "./sequence";
 import type { ClipDetail, Edl, Peaks, Span, Word } from "./types";
 
-export type SaveState = "saved" | "pending" | "saving" | "error";
+export type SaveState = "saved" | "saving" | "error";
 
 export interface EditorAssets {
   transcript: Word[];
@@ -12,127 +11,153 @@ export interface EditorAssets {
   peaks: Peaks | null;
 }
 
+/** What the inspector shows and keyboard shortcuts act on. */
+export type Selection =
+  | { kind: "segments"; ids: string[] }
+  | { kind: "transition"; segmentId: string }
+  | { kind: "overlay"; id: string }
+  | { kind: "broll"; id: string }
+  | null;
+
+export interface MediaSize {
+  width: number;
+  height: number;
+}
+
 interface EditorState extends EditorAssets {
   clip: ClipDetail | null;
   video: Video | null;
-  /** The edit being worked on; the only state undo/redo tracks. */
+  /** The server's copy of the edit; every change goes through a command (commands.ts). */
   edl: Edl | null;
-  /** Source time of the preview. */
+  revision: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Output time (seconds into the clip) of the preview. */
   playhead: number;
   playing: boolean;
-  selectedRange: number | null;
+  selection: Selection;
   selectedWord: number | null;
-  selectedOverlay: number | null;
   saveState: SaveState;
   saveError: string | null;
-  media: HTMLVideoElement | null;
+  snapping: boolean;
+  /** Pixel sizes of the media the clip uses (videos by id, images by file), for framing. */
+  mediaSizes: Record<string, MediaSize>;
 
   open: (clip: ClipDetail, video: Video, assets: EditorAssets) => void;
   close: () => void;
-  /** Every change to the edit goes through here, so each call is one undo step. */
-  edit: (change: (edl: Edl) => Edl) => void;
-  setMedia: (media: HTMLVideoElement | null) => void;
-  setPlayhead: (t: number, playing: boolean) => void;
+  /** A clip as the server returned it (after an edit, undo/redo or reload). */
+  setClip: (clip: ClipDetail) => void;
+  setPlayhead: (t: number) => void;
   seek: (t: number) => void;
+  setPlaying: (playing: boolean) => void;
   togglePlay: () => void;
-  selectRange: (index: number | null) => void;
+  select: (selection: Selection) => void;
   selectWord: (index: number | null) => void;
-  selectOverlay: (index: number | null) => void;
-  setSaved: (clip: ClipDetail) => void;
   setSaveState: (state: SaveState, error?: string) => void;
+  setSnapping: (on: boolean) => void;
+  noteMediaSize: (key: string, size: MediaSize) => void;
 }
 
-const EMPTY: Pick<
-  EditorState,
-  | "clip"
-  | "video"
-  | "edl"
-  | "transcript"
-  | "speech"
-  | "peaks"
-  | "playhead"
-  | "playing"
-  | "selectedRange"
-  | "selectedWord"
-  | "selectedOverlay"
-> = {
+const EMPTY = {
   clip: null,
   video: null,
   edl: null,
+  revision: 0,
+  canUndo: false,
+  canRedo: false,
   transcript: [],
   speech: [],
   peaks: null,
   playhead: 0,
   playing: false,
-  selectedRange: null,
+  selection: null,
   selectedWord: null,
-  selectedOverlay: null,
-};
+} satisfies Partial<EditorState>;
 
-export const useEditor = create<EditorState>()(
-  temporal(
-    (set, get) => ({
+export const useEditor = create<EditorState>()((set, get) => ({
+  ...EMPTY,
+  saveState: "saved",
+  saveError: null,
+  snapping: true,
+  mediaSizes: {},
+
+  open: (clip, video, assets) => {
+    set({
       ...EMPTY,
+      ...assets,
+      ...fromClip(clip),
+      video,
       saveState: "saved",
       saveError: null,
-      media: null,
-
-      open: (clip, video, assets) => {
-        set({ ...EMPTY, ...assets, clip, video, edl: clip.edl, playhead: clip.edl.ranges[0].start, saveState: "saved", saveError: null });
-        useEditor.temporal.getState().clear();
-      },
-      close: () => {
-        set({ ...EMPTY });
-        useEditor.temporal.getState().clear();
-      },
-      edit: (change) => {
-        const { edl } = get();
-        if (!edl) return;
-        const next = change(edl);
-        if (next === edl) return;
-        const words = next.captions.words.length;
-        set((state) => ({
-          edl: next,
-          selectedRange: state.selectedRange != null && state.selectedRange < next.ranges.length ? state.selectedRange : null,
-          selectedWord: state.selectedWord != null && state.selectedWord < words ? state.selectedWord : null,
-          selectedOverlay:
-            state.selectedOverlay != null && state.selectedOverlay < next.overlays.length ? state.selectedOverlay : null,
-        }));
-      },
-      setMedia: (media) => set({ media }),
-      setPlayhead: (t, playing) => {
-        if (t !== get().playhead || playing !== get().playing) set({ playhead: t, playing });
-      },
-      seek: (t) => {
-        const { media } = get();
-        if (media) media.currentTime = t;
-        set({ playhead: t });
-      },
-      togglePlay: () => {
-        const { media, edl } = get();
-        if (!media || !edl) return;
-        if (!media.paused) {
-          media.pause();
-          return;
-        }
-        // From the end (or outside the kept ranges), start over at the first range.
-        const at = nextPlayable(media.currentTime, edl.ranges);
-        media.currentTime = at ?? edl.ranges[0].start;
-        void media.play();
-      },
-      selectRange: (index) => set({ selectedRange: index }),
-      selectWord: (index) => set({ selectedWord: index }),
-      selectOverlay: (index) => set({ selectedOverlay: index }),
-      setSaved: (clip) => set({ clip, saveState: "saved", saveError: null }),
-      setSaveState: (saveState, error) => set({ saveState, saveError: error ?? null }),
+      mediaSizes: { ...get().mediaSizes, [video.id]: { width: video.width ?? 1920, height: video.height ?? 1080 } },
+    });
+  },
+  close: () => set({ ...EMPTY }),
+  setClip: (clip) =>
+    set((state) => {
+      const next = fromClip(clip);
+      const duration = outputDuration(next.edl.segments);
+      return {
+        ...next,
+        selection: keepSelection(state.selection, next.edl),
+        selectedWord:
+          state.selectedWord != null && state.selectedWord < next.edl.captions.words.length ? state.selectedWord : null,
+        playhead: Math.min(state.playhead, duration),
+      };
     }),
-    {
-      partialize: (state) => ({ edl: state.edl }),
-      equality: (a, b) => a.edl === b.edl,
-      limit: 200,
-    },
-  ),
-);
+  setPlayhead: (t) => {
+    if (t !== get().playhead) set({ playhead: t });
+  },
+  seek: (t) => {
+    const { edl } = get();
+    const duration = edl ? outputDuration(edl.segments) : 0;
+    set({ playhead: Math.min(Math.max(t, 0), duration) });
+  },
+  setPlaying: (playing) => set({ playing }),
+  togglePlay: () => {
+    const { playing, playhead, edl } = get();
+    if (!edl) return;
+    // From the end, start over.
+    if (!playing && playhead >= outputDuration(edl.segments) - 0.01) set({ playhead: 0 });
+    set({ playing: !playing });
+  },
+  select: (selection) => set({ selection }),
+  selectWord: (index) => set({ selectedWord: index }),
+  setSaveState: (saveState, error) => set({ saveState, saveError: error ?? null }),
+  setSnapping: (snapping) => set({ snapping }),
+  noteMediaSize: (key, size) => {
+    const known = get().mediaSizes[key];
+    if (!known || known.width !== size.width || known.height !== size.height) {
+      set({ mediaSizes: { ...get().mediaSizes, [key]: size } });
+    }
+  },
+}));
 
-export const undo = () => useEditor.temporal.getState().undo();
-export const redo = () => useEditor.temporal.getState().redo();
+function fromClip(clip: ClipDetail) {
+  return { clip, edl: clip.edl, revision: clip.revision, canUndo: clip.can_undo, canRedo: clip.can_redo };
+}
+
+/** Drop selected items an edit removed. */
+function keepSelection(selection: Selection, edl: Edl): Selection {
+  if (!selection) return null;
+  const segments = new Set(edl.segments.map((s) => s.id));
+  switch (selection.kind) {
+    case "segments": {
+      const ids = selection.ids.filter((id) => segments.has(id));
+      return ids.length ? { kind: "segments", ids } : null;
+    }
+    case "transition": {
+      const segment = edl.segments.find((s) => s.id === selection.segmentId);
+      return segment?.transition ? selection : null;
+    }
+    case "overlay":
+      return edl.overlays.some((o) => o.id === selection.id) ? selection : null;
+    case "broll":
+      return edl.broll.some((b) => b.id === selection.id) ? selection : null;
+  }
+}
+
+/** Ids of the selected segments (empty unless segments are selected). */
+export function selectedSegments(selection: Selection): string[] {
+  return selection?.kind === "segments" ? selection.ids : [];
+}

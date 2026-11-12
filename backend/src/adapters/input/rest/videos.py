@@ -8,6 +8,7 @@ from src.adapters.input.rest.dependencies import get_video_library
 from src.application.dto.job import JobDTO
 from src.application.dto.video import AddVideoRequest, VideoDTO
 from src.domain.enums.video_file_enum import VideoFile
+from src.domain.enums.video_kind_enum import VideoKind
 from src.ports.input.video_library_port import VideoLibraryPort
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
@@ -17,20 +18,23 @@ Library = Annotated[VideoLibraryPort, Depends(get_video_library)]
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def add_from_url(body: AddVideoRequest, library: Library) -> VideoDTO:
-    return VideoDTO.from_domain(await library.add_from_url(body.url), None)
+    return VideoDTO.from_domain(await library.add_from_url(body.url, body.kind), None)
 
 
 @router.post("/upload", status_code=status.HTTP_202_ACCEPTED)
 async def upload(
-    request: Request, library: Library, filename: Annotated[str, Query(min_length=1)]
+    request: Request,
+    library: Library,
+    filename: Annotated[str, Query(min_length=1)],
+    kind: VideoKind = VideoKind.SOURCE,
 ) -> VideoDTO:
     """The request body is the raw file, streamed straight to disk (no multipart)."""
-    return VideoDTO.from_domain(await library.add_upload(filename, request.stream()), None)
+    return VideoDTO.from_domain(await library.add_upload(filename, request.stream(), kind), None)
 
 
 @router.get("")
-async def list_videos(library: Library) -> list[VideoDTO]:
-    return [VideoDTO.from_domain(video, job) for video, job in await library.list()]
+async def list_videos(library: Library, kind: VideoKind | None = None) -> list[VideoDTO]:
+    return [VideoDTO.from_domain(video, job) for video, job in await library.list(kind)]
 
 
 @router.get("/{video_id}")
@@ -52,4 +56,7 @@ async def find_clips_again(video_id: UUID, library: Library) -> JobDTO:
 @router.get("/{video_id}/media/{file}")
 async def media(video_id: UUID, file: VideoFile, library: Library) -> FileResponse:
     """Serves Range requests, so the browser can seek in videos."""
-    return FileResponse(await library.media_path(video_id, file))
+    return FileResponse(
+        await library.media_path(video_id, file),
+        headers={"Cache-Control": "public, max-age=3600", "Accept-Ranges": "bytes"},
+    )

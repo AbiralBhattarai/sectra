@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { useStore } from "zustand";
-import type { Video } from "../api/types";
-import { deleteRange, splitAt } from "./edlOps";
-import { loadClip } from "./loadClip";
+import { deleteSelection, redo, splitAtPlayhead, undo } from "./actions";
+import { run } from "./commands";
+import { loadClip, loadMediaSizes } from "./loadClip";
 import { Preview } from "./Preview";
 import { SidePanel } from "./SidePanel";
-import { redo, undo, useEditor } from "./store";
+import { useEditor } from "./store";
 import type { AspectRatio } from "./types";
-import { useAutosave } from "./useAutosave";
-import { useFaceTracking, withoutTracking } from "./useFaceTracking";
+import { useClipSync } from "./useClipSync";
+import { useFaceTracking } from "./useFaceTracking";
+import { useShortcuts } from "./useShortcuts";
+import type { Video } from "../api/types";
 
 interface Props {
   clipId: string;
@@ -18,21 +19,21 @@ interface Props {
 export function Editor({ clipId, video }: Props) {
   const clip = useEditor((s) => s.clip);
   const [error, setError] = useState<string | null>(null);
-  useAutosave();
+  useClipSync();
+  useShortcuts();
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
     loadClip(clipId, video)
       .then(({ clip, assets }) => !cancelled && useEditor.getState().open(clip, video, assets))
+      .then(() => loadMediaSizes())
       .catch((e: Error) => !cancelled && setError(e.message));
     return () => {
       cancelled = true;
       useEditor.getState().close();
     };
   }, [clipId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useShortcuts();
 
   if (error) return <p className="error">Could not open clip: {error}</p>;
   if (!clip || clip.id !== clipId) return <p className="placeholder">Loading clip…</p>;
@@ -50,12 +51,11 @@ export function Editor({ clipId, video }: Props) {
 function Toolbar() {
   const clip = useEditor((s) => s.clip)!;
   const edl = useEditor((s) => s.edl)!;
-  const selectedRange = useEditor((s) => s.selectedRange);
+  const selection = useEditor((s) => s.selection);
+  const canUndo = useEditor((s) => s.canUndo);
+  const canRedo = useEditor((s) => s.canRedo);
   const saveState = useEditor((s) => s.saveState);
   const saveError = useEditor((s) => s.saveError);
-  const canUndo = useStore(useEditor.temporal, (s) => s.pastStates.length > 0);
-  const canRedo = useStore(useEditor.temporal, (s) => s.futureStates.length > 0);
-  const { edit } = useEditor.getState();
   const faces = useFaceTracking();
 
   return (
@@ -65,7 +65,7 @@ function Toolbar() {
       </h2>
       <select
         value={edl.aspect}
-        onChange={(event) => edit((e) => ({ ...e, aspect: event.target.value as AspectRatio }))}
+        onChange={(event) => run({ op: "update_clip", aspect: event.target.value as AspectRatio })}
         aria-label="Aspect ratio"
       >
         <option value="9:16">9:16</option>
@@ -76,11 +76,7 @@ function Toolbar() {
         <input
           type="checkbox"
           checked={edl.split_screen && !faces.checked}
-          onChange={(event) => {
-            const on = event.target.checked;
-            if (on) faces.stop();
-            edit((e) => ({ ...(on ? withoutTracking(e) : e), split_screen: on }));
-          }}
+          onChange={(event) => run({ op: "update_clip", split_screen: event.target.checked })}
         />
         OmeTV split
       </label>
@@ -96,12 +92,7 @@ function Toolbar() {
       <button type="button" onClick={splitAtPlayhead} title="Split at playhead (S)">
         Split
       </button>
-      <button
-        type="button"
-        onClick={deleteSelected}
-        disabled={selectedRange == null || edl.ranges.length < 2}
-        title="Delete selected range (Delete)"
-      >
+      <button type="button" onClick={deleteSelection} disabled={!selection} title="Delete selection (Delete)">
         Delete
       </button>
       <button type="button" onClick={undo} disabled={!canUndo} title="Undo (⌘Z)">
@@ -111,49 +102,10 @@ function Toolbar() {
         Redo
       </button>
       <span className={`save-state ${saveState}`} title={saveError ?? undefined}>
-        {SAVE_LABELS[saveState]}
+        {saveState === "error" ? (saveError ?? "Edit failed") : SAVE_LABELS[saveState]}
       </span>
     </header>
   );
 }
 
-const SAVE_LABELS = { saved: "Saved", pending: "Unsaved", saving: "Saving…", error: "Save failed" };
-
-function splitAtPlayhead() {
-  const { edit, playhead } = useEditor.getState();
-  edit((e) => splitAt(e, playhead));
-}
-
-function deleteSelected() {
-  const { edit, selectedRange, selectRange } = useEditor.getState();
-  if (selectedRange == null) return;
-  edit((e) => deleteRange(e, selectedRange));
-  selectRange(null);
-}
-
-function useShortcuts() {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest("input, textarea, select, [contenteditable=true]")) return;
-      const mod = event.metaKey || event.ctrlKey;
-      if (mod && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) redo();
-        else undo();
-      } else if (mod && event.key.toLowerCase() === "y") {
-        event.preventDefault();
-        redo();
-      } else if (event.key === " ") {
-        event.preventDefault();
-        useEditor.getState().togglePlay();
-      } else if (event.key.toLowerCase() === "s" && !mod) {
-        splitAtPlayhead();
-      } else if (event.key === "Delete" || event.key === "Backspace") {
-        deleteSelected();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-}
+const SAVE_LABELS = { saved: "Saved", saving: "Saving…", error: "Edit failed" };

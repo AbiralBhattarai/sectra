@@ -5,6 +5,7 @@ from src.adapters.input.rest import (
     events,
     exports,
     health,
+    images,
     jobs,
     music,
     tracking,
@@ -20,6 +21,7 @@ def build_router() -> APIRouter:
     router.include_router(videos.router)
     router.include_router(clips.router)
     router.include_router(music.router)
+    router.include_router(images.router)
     router.include_router(exports.router)
     router.include_router(tracking.router)
     return router

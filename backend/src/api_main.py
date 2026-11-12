@@ -8,7 +8,7 @@ from src.adapters.input.rest.router import build_router
 from src.config.container import build_container
 from src.config.logging_config import configure_logging
 from src.config.settings import Settings, get_settings
-from src.domain.exceptions import AppValidationException, NotFoundException
+from src.domain.exceptions import AppConflictException, AppValidationException, NotFoundException
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -30,6 +30,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(NotFoundException)
     async def not_found(_: Request, exc: NotFoundException) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(AppConflictException)
+    async def conflict(_: Request, exc: AppConflictException) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(AppValidationException)
     async def invalid(_: Request, exc: AppValidationException) -> JSONResponse:

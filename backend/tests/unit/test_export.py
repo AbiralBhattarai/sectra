@@ -16,8 +16,20 @@ from src.adapters.output.renderer.ffmpeg_renderer_adapter import FfmpegRendererA
 from src.api_main import create_app
 from src.config.settings import Settings
 from src.domain.enums.caption_style_enum import CaptionStyle
-from src.domain.models.edl import Captions, Edl, Music, Overlay
-from src.domain.models.speech import TimeSpan
+from src.domain.models.edl import (
+    BrollItem,
+    Captions,
+    Color,
+    Crop,
+    Edl,
+    FreezeSegment,
+    ImageSegment,
+    Music,
+    Overlay,
+    Transition,
+    VideoSegment,
+)
+from src.domain.models.render import MediaSource
 from src.domain.models.transcript import Word
 from src.domain.models.video import Video
 from src.domain.services.render_planning import plan_render
@@ -91,36 +103,54 @@ def _has_libass() -> bool:
 @pytest.mark.skipif(
     not _has_libass(), reason="host ffmpeg built without libass (worker image has it)"
 )
-async def test_real_render_cuts_crops_captions_and_mixes(tmp_path):
+async def test_real_render_joins_transitions_speed_stills_grades_and_broll(tmp_path):
     source = make_video(tmp_path / "source.mp4", 1280, 720, seconds=8)
+    broll = make_video(tmp_path / "broll.mp4", 640, 360, seconds=3, audio=False)
+    image = tmp_path / "logo.png"
     music = tmp_path / "beat.mp3"
-    subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=220:duration=2",
-         str(music)],
-        check=True,
-    )  # fmt: skip
+    for args in (
+        ["-f", "lavfi", "-i", "color=c=red:size=400x300", "-frames:v", "1", str(image)],
+        ["-f", "lavfi", "-i", "sine=frequency=220:duration=2", str(music)],
+    ):
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *args], check=True)
+    other = uuid4()
     edl = Edl(
-        ranges=[TimeSpan(start=1, end=3), TimeSpan(start=5, end=6.5)],
+        segments=[
+            VideoSegment(start=1, end=3),
+            VideoSegment(start=5, end=7, speed=2, transition=Transition(duration=0.4)),
+            FreezeSegment(at=6, duration=1),
+            ImageSegment(image="logo.png", duration=1, transition=Transition(type="wipeleft", duration=0.3)),
+            VideoSegment(start=0, end=2, color=Color(saturation=0), crop=Crop(), crop_to=Crop(scale=2)),
+        ],
         captions=Captions(
             words=[
                 Word(text="testing", start=1.2, end=1.8),
-                Word(text="captions", start=5.1, end=5.9),
+                Word(text="captions", start=5.2, end=5.8),
             ],
             style=CaptionStyle.BOXED,
         ),
         overlays=[Overlay(text="Hook line", start=0, end=2)],
+        broll=[BrollItem(media=other, start=1, duration=1.5, layout="pip", fade=0.3)],
         music=Music(file="x-beat.mp3", volume=0.3, duck=True),
-    )
+        fade_in=0.3,
+        fade_out=0.5,
+    )  # fmt: skip
     progress = []
 
     async def report(fraction):
         progress.append(fraction)
 
+    sources = {
+        "main": MediaSource(width=1280, height=720, has_audio=True),
+        str(other): MediaSource(width=640, height=360, has_audio=False),
+        "image:logo.png": MediaSource(width=400, height=300, has_audio=False),
+    }
+    inputs = {"main": source, str(other): broll, "image:logo.png": image}
     with ThreadPoolExecutor(1) as executor:
         renderer = FfmpegRendererAdapter(asyncio.Semaphore(1), executor, FONTS)
         await renderer.render(
-            plan_render(edl, 1280, 720),
-            source,
+            plan_render(edl, sources),
+            inputs,
             music,
             tmp_path / "out.mp4",
             tmp_path / "out.srt",
@@ -130,8 +160,14 @@ async def test_real_render_cuts_crops_captions_and_mixes(tmp_path):
     info = probe(tmp_path / "out.mp4")
     video = next(s for s in info["streams"] if s["codec_type"] == "video")
     assert (video["width"], video["height"], video["codec_name"]) == (1080, 1920, "h264")
+    assert video["avg_frame_rate"] == "30/1"
     assert any(s["codec_type"] == "audio" for s in info["streams"])
-    assert float(info["format"]["duration"]) == pytest.approx(3.5, abs=0.15)
-    assert "00:00:02,100 --> " in (tmp_path / "out.srt").read_text()  # 5.1 s → 2.1 s output
+    # 2 + 1 − 0.4 (crossfade) + 1 + 1 − 0.3 (wipe) + 2
+    assert float(info["format"]["duration"]) == pytest.approx(6.3, abs=0.1)
+    # "captions" (source 5.2 s) plays at 1.6 + 0.2 / 2 = 1.7 s, inside the crossfade, so
+    # it waits for the middle of it (1.8 s), where segment 2 takes over.
+    srt = (tmp_path / "out.srt").read_text()
+    assert "00:00:01,800 --> 00:00:02,150\ncaptions" in srt
+    assert "00:00:05,500 --> " in srt  # segment 5 replays source 0-2 s: "testing" again
     assert progress and max(progress) <= 1.0
     assert not list(tmp_path.glob("*.ass")) and not list(tmp_path.glob("*.partial.*"))

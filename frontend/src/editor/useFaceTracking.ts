@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getTracking, requestTracking } from "../api/client";
+import { requestTracking } from "../api/client";
 import { useJobEvents } from "../api/useJobEvents";
-import { mergeTracking, tracksRanges } from "./edlOps";
+import { run } from "./commands";
+import { isClipVideo } from "./sequence";
 import { useEditor } from "./store";
 import type { Edl } from "./types";
 
@@ -12,23 +13,13 @@ export interface TrackingState {
 }
 
 /** The "Face tracking" checkbox. Ticking it reuses shots that cover the clip, or runs a
- * TRACK job and applies the result as one edit (the worker never writes the EDL, so
- * autosave can't overwrite it). Trimming past the tracked span tracks the rest. */
+ * TRACK job; the worker merges the result into the clip itself and the editor picks it
+ * up from the clip event. Trimming past the tracked span tracks the rest. */
 export function useFaceTracking() {
   const clipId = useEditor((s) => s.clip?.id);
-  const tracking = useEditor((s) => s.edl?.tracking ?? null);
-  const ranges = useEditor((s) => s.edl?.ranges);
+  const edl = useEditor((s) => s.edl);
   const [state, setState] = useState<TrackingState | null>(null);
-  // The job this editor waits on, and the clip it is for.
-  const waiting = useRef<{ jobId: string; clipId: string } | null>(null);
-
-  const apply = useCallback(async (jobId: string, forClip: string) => {
-    const result = await getTracking(jobId);
-    const { clip, edit } = useEditor.getState();
-    if (clip?.id !== forClip) return;
-    edit((e) => ({ ...e, split_screen: false, tracking: mergeTracking(e.tracking, result) }));
-    setState(null);
-  }, []);
+  const waiting = useRef<string | null>(null);
 
   const fail = (error: string) => setState({ status: "failed", progress: 0, error });
 
@@ -37,19 +28,23 @@ export function useFaceTracking() {
     setState({ status: "tracking", progress: 0 });
     try {
       const job = await requestTracking(forClip);
-      if (job.status === "succeeded") await apply(job.id, forClip);
-      else waiting.current = { jobId: job.id, clipId: forClip };
+      if (job.status === "succeeded") {
+        // Already tracked: make sure it's switched on.
+        setState(null);
+        void run({ op: "update_clip", tracking_enabled: true });
+      } else {
+        waiting.current = job.id;
+      }
     } catch (e) {
       fail((e as Error).message);
     }
-  }, [apply]);
+  }, []);
 
   useJobEvents((event) => {
-    const job = waiting.current;
-    if (!job || event.job_id !== job.jobId) return;
+    if (event.job_id !== waiting.current) return;
     if (event.status === "succeeded") {
       waiting.current = null;
-      apply(job.jobId, job.clipId).catch((e: Error) => fail(e.message));
+      setState(null);
     } else if (event.status === "failed") {
       waiting.current = null;
       fail(event.error ?? "Face tracking failed");
@@ -64,31 +59,33 @@ export function useFaceTracking() {
   }, [clipId]);
 
   // Trimmed past what was tracked: track the new stretch too.
-  const uncovered = tracking?.enabled === true && ranges != null && !tracksRanges(tracking, ranges);
+  const uncovered = edl?.tracking?.enabled === true && !tracksClip(edl);
   useEffect(() => {
     if (uncovered && !waiting.current) void start();
   }, [uncovered, start]);
 
-  /** Forget a running job (its result won't be applied). */
-  const stop = () => {
-    waiting.current = null;
-    setState(null);
-  };
-
   const toggle = (on: boolean) => {
-    const { edl, edit } = useEditor.getState();
+    const current = useEditor.getState().edl!;
     if (!on) {
-      stop();
-      edit(withoutTracking);
-    } else if (edl!.tracking && tracksRanges(edl!.tracking, edl!.ranges)) {
-      edit((e) => ({ ...e, split_screen: false, tracking: { ...e.tracking!, enabled: true } }));
+      waiting.current = null;
+      setState(null);
+      if (current.tracking?.enabled) void run({ op: "update_clip", tracking_enabled: false });
+    } else if (current.tracking && tracksClip(current)) {
+      void run({ op: "update_clip", tracking_enabled: true });
     } else {
       void start();
     }
   };
 
-  return { checked: tracking?.enabled === true || state?.status === "tracking", state, toggle, stop };
+  return { checked: edl?.tracking?.enabled === true || state?.status === "tracking", state, toggle };
 }
 
-export const withoutTracking = (e: Edl): Edl =>
-  e.tracking ? { ...e, tracking: { ...e.tracking, enabled: false } } : e;
+/** Whether face tracking analysed every second of the clip's own video it shows. */
+export function tracksClip(edl: Edl): boolean {
+  const span = edl.tracking?.span;
+  if (!span) return false;
+  return edl.segments.every((s) => {
+    if (s.kind === "image" || !isClipVideo(s)) return true;
+    return s.kind === "video" ? span.start <= s.start && span.end >= s.end : span.start <= s.at && s.at <= span.end;
+  });
+}

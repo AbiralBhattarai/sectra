@@ -1,6 +1,6 @@
-import { getClip, getMediaJson } from "../api/client";
+import { getClip, getMediaJson, listVideos } from "../api/client";
 import type { Video } from "../api/types";
-import type { EditorAssets } from "./store";
+import { useEditor, type EditorAssets } from "./store";
 import type { Peaks, SpeechMap, Transcript } from "./types";
 
 const assetCache = new Map<string, Promise<EditorAssets>>();
@@ -27,4 +27,11 @@ function videoAssets(videoId: string): Promise<EditorAssets> {
 export async function loadClip(clipId: string, video: Video) {
   const [clip, assets] = await Promise.all([getClip(clipId), videoAssets(video.id)]);
   return { clip, assets };
+}
+
+/** Sizes of every video in the library, for framing segments and B-roll that use them. */
+export async function loadMediaSizes(): Promise<void> {
+  const videos = await listVideos();
+  const { noteMediaSize } = useEditor.getState();
+  for (const v of videos) if (v.width && v.height) noteMediaSize(v.id, { width: v.width, height: v.height });
 }

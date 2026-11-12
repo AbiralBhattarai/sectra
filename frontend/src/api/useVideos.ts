@@ -13,7 +13,7 @@ export function useVideos() {
 
   const refresh = useCallback(async () => {
     try {
-      setVideos(await listVideos());
+      setVideos(await listVideos("source"));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -23,7 +23,8 @@ export function useVideos() {
   const refetchVideo = useCallback(async (id: string) => {
     try {
       const video = await getVideo(id);
-      setVideos((current) => upsert(current, video));
+      // B-roll assets live in the editor's media bin, not the sources list.
+      if (video.kind === "source") setVideos((current) => upsert(current, video));
     } catch {
       setVideos((current) => current.filter((v) => v.id !== id)); // deleted meanwhile
     }

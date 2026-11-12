@@ -6,6 +6,7 @@ from uuid import UUID
 from src.application.services.job_scheduler import JobScheduler
 from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.models.job import Job, JobEvent
 from src.ports.output.job_repository import JobRepository
@@ -72,7 +73,10 @@ class PipelineDispatcher:
         # Advance the video before announcing success, so a UI refetch on the
         # event already sees the new state.
         if job.video_id:
-            if next_stage := job.type.next_stage:
+            next_stage = job.type.next_stage
+            if job.type is JobType.PREPARE and await self._is_asset(job.video_id):
+                next_stage = None  # assets need no transcript or clips
+            if next_stage:
                 await self._scheduler.submit(Job(type=next_stage, video_id=job.video_id))
             else:
                 await self._set_video_status(job.video_id, VideoStatus.READY)
@@ -86,6 +90,10 @@ class PipelineDispatcher:
         job.status = JobStatus.FAILED
         job.error = error
         await self._update(job)
+
+    async def _is_asset(self, video_id: UUID) -> bool:
+        video = await self._videos.get(video_id)
+        return video is not None and video.kind is VideoKind.ASSET
 
     async def _set_video_status(self, video_id: UUID, status: VideoStatus) -> None:
         video = await self._videos.get(video_id)

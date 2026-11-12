@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import Executor
 from pathlib import Path
 
@@ -23,7 +23,7 @@ class FfmpegRendererAdapter:
     async def render(
         self,
         plan: RenderPlan,
-        source: Path,
+        inputs: Mapping[str, Path],
         music: Path | None,
         video_out: Path,
         subtitles_out: Path,
@@ -35,7 +35,7 @@ class FfmpegRendererAdapter:
         try:
             async with self._semaphore:
                 await run_ffmpeg(
-                    build_command(plan, source, music, ass, self._fonts_dir, partial),
+                    build_command(plan, inputs, music, ass, self._fonts_dir, partial),
                     plan.duration,
                     on_progress,
                 )

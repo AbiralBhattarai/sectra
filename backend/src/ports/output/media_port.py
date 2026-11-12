@@ -14,6 +14,10 @@ class MediaPort(Protocol):
 
     async def probe(self, path: Path) -> MediaInfo: ...
 
+    async def image_size(self, path: Path) -> tuple[int, int]:
+        """(width, height) of a still image."""
+        ...
+
     async def normalize(
         self, src: Path, dst: Path, plan: NormalizePlan, duration: float, on_progress: OnProgress
     ) -> None:

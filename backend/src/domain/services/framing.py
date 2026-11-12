@@ -1,7 +1,8 @@
 """Output frame size and crop window. Mirrors frontend/src/editor/crop.ts."""
 
 from src.domain.enums.aspect_ratio_enum import AspectRatio
-from src.domain.models.edl import Crop, Edl
+from src.domain.models.edl import Crop, Edl, ImageSegment, Segment, VideoSegment
+from src.domain.services.sequence import is_clip_video
 
 OUTPUT_SIZES: dict[AspectRatio, tuple[int, int]] = {
     AspectRatio.VERTICAL: (1080, 1920),
@@ -39,15 +40,48 @@ def tracking_on(edl: Edl) -> bool:
     return edl.tracking is not None and edl.tracking.enabled
 
 
-def crop_at(edl: Edl, t: float) -> Crop:
-    """The crop in effect at source time ``t``: ``edl.crop``, or with face tracking on,
-    its zoom centred where the last shot starting at or before ``t`` (else the first)
-    points. Mirrors ``cropAt`` in crop.ts."""
-    if not tracking_on(edl):
-        return edl.crop
-    shots = edl.tracking.shots
-    shot = next((s for s in reversed(shots) if s.start <= t), shots[0])
-    return Crop(x=shot.x, y=shot.y, scale=edl.crop.scale)
+def follows_tracking(edl: Edl, segment: Segment) -> bool:
+    """Face tracking frames clip-video segments that have no crop of their own."""
+    return tracking_on(edl) and is_clip_video(segment) and segment.crop is None
+
+
+def split_applies(edl: Edl, segment: Segment) -> bool:
+    """Split screen applies to clip-video segments; face tracking wins over it."""
+    return edl.split_screen and not tracking_on(edl) and is_clip_video(segment)
+
+
+def crop_at(edl: Edl, segment: Segment, t: float) -> Crop:
+    """The crop in effect at media time ``t`` of ``segment`` (source seconds, or seconds
+    into an image): its own crop, animated towards ``crop_to`` over the segment (Ken
+    Burns); else with face tracking, the shot starting at or before ``t`` (else the first)
+    at the shared zoom; else ``edl.crop``. Mirrors ``cropAt`` in crop.ts."""
+    if segment.crop is not None:
+        target = getattr(segment, "crop_to", None)
+        if target is None:
+            return segment.crop
+        p = progress(segment, t)
+        a = segment.crop
+        return Crop(
+            x=a.x + (target.x - a.x) * p,
+            y=a.y + (target.y - a.y) * p,
+            scale=a.scale + (target.scale - a.scale) * p,
+        )
+    if follows_tracking(edl, segment):
+        shots = edl.tracking.shots
+        shot = next((s for s in reversed(shots) if s.start <= t), shots[0])
+        return Crop(x=shot.x, y=shot.y, scale=edl.crop.scale)
+    return edl.crop
+
+
+def progress(segment: Segment, t: float) -> float:
+    """How far (0..1) media time ``t`` is through the segment."""
+    if isinstance(segment, VideoSegment):
+        fraction = (t - segment.start) / (segment.end - segment.start)
+    elif isinstance(segment, ImageSegment):
+        fraction = t / segment.duration
+    else:
+        return 0.0
+    return min(max(fraction, 0.0), 1.0)
 
 
 def _even(value: float, limit: int) -> int:

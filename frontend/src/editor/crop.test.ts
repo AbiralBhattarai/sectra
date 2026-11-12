@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { cropAt, cropWindow, panCrop, setCropAt } from "./crop";
-import type { Edl } from "./types";
+import { cropAt, cropWindow, panCrop, reframeCommands } from "./crop";
+import { layout } from "./sequence";
+import type { Edl, VideoSegment } from "./types";
 
 const centre = { x: 0.5, y: 0.5, scale: 1 };
 
@@ -41,8 +42,25 @@ describe("panCrop", () => {
   });
 });
 
-describe("cropAt / setCropAt (mirrors test_render_planning.py)", () => {
-  const edl = (enabled: boolean): Edl => ({
+describe("cropAt / reframeCommands (mirrors test_render_planning.py)", () => {
+  const segment = (fields: Partial<VideoSegment> = {}): VideoSegment => ({
+    id: "s1",
+    kind: "video",
+    media: null,
+    start: 10,
+    end: 14,
+    speed: 1,
+    volume: 1,
+    audio_fade_in: 0,
+    audio_fade_out: 0,
+    color: { brightness: 1, contrast: 1, saturation: 1, sepia: 0, hue: 0 },
+    crop: null,
+    crop_to: null,
+    transition: null,
+    ...fields,
+  });
+  const edl = (enabled: boolean, seg = segment()): Edl => ({
+    version: 2,
     aspect: "9:16",
     crop: { x: 0.5, y: 0.5, scale: 2 },
     split_screen: false,
@@ -54,23 +72,46 @@ describe("cropAt / setCropAt (mirrors test_render_planning.py)", () => {
         { start: 12, face: 1, x: 0.8, y: 0.5 },
       ],
     },
-    ranges: [{ start: 10, end: 14 }],
+    segments: [seg],
     captions: { words: [], style: "clean" },
     overlays: [],
+    broll: [],
+    markers: [],
     music: null,
+    fade_in: 0,
+    fade_out: 0,
   });
 
   it("follows the shot and keeps the shared zoom", () => {
-    expect(cropAt(edl(true), 9)).toEqual({ x: 0.2, y: 0.5, scale: 2 });
-    expect(cropAt(edl(true), 12)).toEqual({ x: 0.8, y: 0.5, scale: 2 });
-    expect(cropAt(edl(true), 5)).toEqual({ x: 0.2, y: 0.5, scale: 2 });
-    expect(cropAt(edl(false), 12)).toEqual({ x: 0.5, y: 0.5, scale: 2 });
+    const s = segment();
+    expect(cropAt(edl(true), s, 9)).toEqual({ x: 0.2, y: 0.5, scale: 2 });
+    expect(cropAt(edl(true), s, 12)).toEqual({ x: 0.8, y: 0.5, scale: 2 });
+    expect(cropAt(edl(true), s, 5)).toEqual({ x: 0.2, y: 0.5, scale: 2 });
+    expect(cropAt(edl(false), s, 12)).toEqual({ x: 0.5, y: 0.5, scale: 2 });
   });
 
-  it("reframing moves only the shot under the playhead; zoom moves all", () => {
-    const next = setCropAt(edl(true), 13, { x: 0.7, y: 0.4, scale: 1.5 });
-    expect(next.tracking!.shots.map((s) => [s.x, s.y])).toEqual([[0.2, 0.5], [0.7, 0.4]]);
-    expect(next.crop).toEqual({ x: 0.5, y: 0.5, scale: 1.5 });
-    expect(setCropAt(edl(false), 13, { x: 0.7, y: 0.4, scale: 1 }).crop).toEqual({ x: 0.7, y: 0.4, scale: 1 });
+  it("a segment crop overrides tracking and Ken Burns interpolates", () => {
+    const own = segment({ crop: { x: 0.1, y: 0.5, scale: 1 }, crop_to: { x: 0.3, y: 0.5, scale: 3 } });
+    const c = cropAt(edl(true, own), own, 12);
+    expect(c.x).toBeCloseTo(0.2);
+    expect(c.scale).toBeCloseTo(2);
+  });
+
+  it("reframing goes to the shot, the segment's framing or the clip's", () => {
+    const placed = layout([segment()]);
+    const crop = { x: 0.7, y: 0.4, scale: 1.5 };
+    expect(reframeCommands(edl(true), placed[0], 3, crop)).toEqual([
+      { op: "reframe_shot", index: 1, x: 0.7, y: 0.4 },
+      { op: "update_clip", crop: { x: 0.5, y: 0.5, scale: 1.5 } },
+    ]);
+    expect(reframeCommands(edl(false), placed[0], 3, crop)).toEqual([{ op: "update_clip", crop }]);
+    const own = segment({ crop: { x: 0.5, y: 0.5, scale: 1 }, crop_to: { x: 0.5, y: 0.5, scale: 2 } });
+    const ownPlaced = layout([own]);
+    expect(reframeCommands(edl(true, own), ownPlaced[0], 1, crop)).toEqual([
+      { op: "update_segment", segment_ids: ["s1"], crop },
+    ]);
+    expect(reframeCommands(edl(true, own), ownPlaced[0], 3, crop)).toEqual([
+      { op: "update_segment", segment_ids: ["s1"], crop_to: crop },
+    ]);
   });
 });

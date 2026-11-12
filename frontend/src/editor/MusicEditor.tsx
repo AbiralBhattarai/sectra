@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listMusic, musicUrl, uploadMusic } from "../api/client";
+import { run } from "./commands";
 import { useEditor } from "./store";
 import type { MusicTrack } from "./types";
 
@@ -7,7 +8,6 @@ const DEFAULT_VOLUME = 0.15;
 
 export function MusicEditor() {
   const music = useEditor((s) => s.edl!.music);
-  const { edit } = useEditor.getState();
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -38,10 +38,9 @@ export function MusicEditor() {
   };
 
   const choose = (file: string) =>
-    edit((e) => ({
-      ...e,
-      music: file ? { file, volume: e.music?.volume ?? DEFAULT_VOLUME, duck: e.music?.duck ?? true } : null,
-    }));
+    file
+      ? run({ op: "set_music", file, volume: music?.volume ?? DEFAULT_VOLUME, duck: music?.duck ?? true })
+      : run({ op: "remove_music" });
 
   const upload = async (file: File | undefined) => {
     if (!file) return;
@@ -59,7 +58,7 @@ export function MusicEditor() {
   };
 
   const commitVolume = () => {
-    if (draftVolume != null) edit((e) => (e.music ? { ...e, music: { ...e.music, volume: draftVolume } } : e));
+    if (draftVolume != null && music) void run({ op: "set_music", file: music.file, volume: draftVolume, duck: music.duck });
     setDraftVolume(null);
   };
 
@@ -140,9 +139,7 @@ export function MusicEditor() {
             <input
               type="checkbox"
               checked={music.duck}
-              onChange={(event) =>
-                edit((e) => (e.music ? { ...e, music: { ...e.music, duck: event.target.checked } } : e))
-              }
+              onChange={(event) => run({ op: "set_music", file: music.file, volume: music.volume, duck: event.target.checked })}
             />
             Lower the music while someone speaks
           </label>

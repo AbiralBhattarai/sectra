@@ -16,6 +16,7 @@ class VideoRow(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(16), default="source", server_default="source")
     source_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16))
     duration: Mapped[float | None] = mapped_column(Float)
@@ -55,5 +56,20 @@ class ClipRow(Base):
     start: Mapped[float] = mapped_column(Float)
     end: Mapped[float] = mapped_column(Float)
     edl: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    #: The history entry the EDL currently matches (undo moves it back).
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ClipRevisionRow(Base):
+    __tablename__ = "clip_revisions"
+
+    clip_id: Mapped[UUID] = mapped_column(
+        ForeignKey("clips.id", ondelete="CASCADE"), primary_key=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    edl: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    label: Mapped[str] = mapped_column(Text)
+    actor: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

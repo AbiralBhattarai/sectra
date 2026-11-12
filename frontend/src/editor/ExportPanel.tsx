@@ -37,7 +37,7 @@ export function ExportPanel() {
     }
   };
 
-  const saved = saveState === "saved";
+  const saved = saveState !== "saving";
   return (
     <div className="tab-body">
       <button type="button" onClick={start} disabled={!saved}>

@@ -1,11 +1,15 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.adapters.output.persistence.models import ClipRow
-from src.domain.models.clip import Clip
+from src.adapters.output.persistence.models import ClipRevisionRow, ClipRow
+from src.domain.models.clip import Clip, ClipRevision
 from src.domain.models.edl import Edl
+
+#: Undo steps kept per clip.
+HISTORY_LIMIT = 200
 
 
 class PostgresClipRepository:
@@ -31,16 +35,75 @@ class PostgresClipRepository:
             row = await session.get(ClipRow, clip_id)
             return _to_domain(row) if row else None
 
-    async def save(self, clip: Clip) -> None:
+    async def commit_edit(self, clip: Clip, base_revision: int, label: str, actor: str) -> bool:
         async with self._sessionmaker.begin() as session:
+            row = await session.get(ClipRow, clip.id, with_for_update=True)
+            if row is None or row.revision != base_revision:
+                return False
+            # The first edit also records where the clip started, so it can be undone.
+            if await session.get(ClipRevisionRow, (clip.id, base_revision)) is None:
+                session.add(_revision(clip.id, base_revision, row.edl, "Original", "analysis"))
             await session.execute(
-                update(ClipRow)
-                .where(ClipRow.id == clip.id)
-                .values(
-                    **clip.model_dump(exclude={"id", "video_id", "created_at", "edl"}),
-                    edl=clip.edl.model_dump(mode="json"),
+                delete(ClipRevisionRow).where(
+                    ClipRevisionRow.clip_id == clip.id,
+                    (ClipRevisionRow.revision > base_revision)
+                    | (ClipRevisionRow.revision <= base_revision + 1 - HISTORY_LIMIT),
                 )
             )
+            clip.revision = base_revision + 1
+            edl = clip.edl.model_dump(mode="json")
+            session.add(_revision(clip.id, clip.revision, edl, label, actor))
+            await _write_clip(session, clip, edl)
+        return True
+
+    async def revision_edl(self, clip_id: UUID, revision: int) -> Edl | None:
+        async with self._sessionmaker() as session:
+            row = await session.get(ClipRevisionRow, (clip_id, revision))
+            return Edl.model_validate(row.edl) if row else None
+
+    async def move_to_revision(self, clip: Clip, from_revision: int) -> bool:
+        async with self._sessionmaker.begin() as session:
+            row = await session.get(ClipRow, clip.id, with_for_update=True)
+            if row is None or row.revision != from_revision:
+                return False
+            await _write_clip(session, clip, clip.edl.model_dump(mode="json"))
+        return True
+
+    async def history(self, clip_id: UUID) -> list[ClipRevision]:
+        query = (
+            select(ClipRevisionRow)
+            .where(ClipRevisionRow.clip_id == clip_id)
+            .order_by(ClipRevisionRow.revision)
+        )
+        async with self._sessionmaker() as session:
+            return [
+                ClipRevision(
+                    revision=r.revision, label=r.label, actor=r.actor, created_at=r.created_at
+                )
+                for r in await session.scalars(query)
+            ]
+
+
+async def _write_clip(session: AsyncSession, clip: Clip, edl: dict) -> None:
+    await session.execute(
+        update(ClipRow)
+        .where(ClipRow.id == clip.id)
+        .values(
+            **clip.model_dump(exclude={"id", "video_id", "created_at", "edl"}),
+            edl=edl,
+        )
+    )
+
+
+def _revision(clip_id: UUID, revision: int, edl: dict, label: str, actor: str) -> ClipRevisionRow:
+    return ClipRevisionRow(
+        clip_id=clip_id,
+        revision=revision,
+        edl=edl,
+        label=label[:200],
+        actor=actor,
+        created_at=datetime.now(UTC),
+    )
 
 
 def _to_row(clip: Clip) -> ClipRow:
@@ -58,6 +121,7 @@ def _to_domain(row: ClipRow) -> Clip:
         start=row.start,
         end=row.end,
         edl=Edl.model_validate(row.edl),
+        revision=row.revision,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

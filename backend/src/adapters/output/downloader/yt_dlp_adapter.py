@@ -65,6 +65,22 @@ class YtDlpAdapter:
             options["cookiefile"] = str(self._cookies_file)
         try:
             with YoutubeDL(options) as ydl:
-                return ydl.sanitize_info(ydl.extract_info(url, download=True))
+                info = ydl.extract_info(url, download=False)
+                if problem := live_problem(info):
+                    raise DownloadException(problem)
+                return ydl.sanitize_info(ydl.process_ie_result(info, download=True))
         except YoutubeDLError as exc:
             raise DownloadException(str(exc).removeprefix("ERROR: ")) from exc
+
+
+def live_problem(info: dict[str, Any]) -> str | None:
+    """Why a live stream can't be downloaded yet: yt-dlp would record it with ffmpeg
+    until the broadcast ends, so the job would never finish."""
+    status = info.get("live_status")
+    if status == "is_live" or (status is None and info.get("is_live")):
+        return "This is a live stream; add it again once it has ended"
+    if status == "is_upcoming":
+        return "This live stream hasn't started yet"
+    if status == "post_live":
+        return "This stream just ended and YouTube is still processing it; try again later"
+    return None

@@ -31,10 +31,25 @@ class FfmpegMediaAdapter:
             raise MediaProcessingException(f"ffprobe failed: {stderr_tail(stderr)}")
         return _media_info(json.loads(stdout))
 
+    async def image_size(self, path: Path) -> tuple[int, int]:
+        code, stdout, stderr = await run_process(
+            "ffprobe", "-v", "error", "-print_format", "json", "-show_streams", str(path),
+        )  # fmt: skip
+        if code != 0:
+            raise MediaProcessingException(f"ffprobe failed: {stderr_tail(stderr)}")
+        video = next(
+            (s for s in json.loads(stdout).get("streams", []) if s.get("codec_type") == "video"),
+            None,
+        )
+        if video is None:
+            raise MediaProcessingException("Not an image")
+        return int(video["width"]), int(video["height"])
+
     async def normalize(
         self, src: Path, dst: Path, plan: NormalizePlan, duration: float, on_progress: OnProgress
     ) -> None:
-        args = ["-i", str(src), "-map", "0:v:0", "-map", "0:a:0"]
+        # "?": B-roll assets may have no audio.
+        args = ["-i", str(src), "-map", "0:v:0", "-map", "0:a:0?"]
         if plan.reencode_video:
             args += _H264 + ["-crf", "20"]
             if plan.scale_to:
