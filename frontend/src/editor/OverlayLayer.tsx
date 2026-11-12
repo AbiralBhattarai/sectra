@@ -1,64 +1,60 @@
 import { useRef, useState, type PointerEvent } from "react";
-import { clamp, overlaysAt, sourceToOutput } from "./edlOps";
+import { run } from "./commands";
+import { clamp } from "./sequence";
 import { useEditor } from "./store";
 
-/** Text overlays on the preview; drag one to move it (one undo step per drag). */
+/** Text overlays on the preview; drag one to move it (one edit per drag). */
 export function OverlayLayer() {
-  const edl = useEditor((s) => s.edl)!;
+  const overlays = useEditor((s) => s.edl!.overlays);
   const playhead = useEditor((s) => s.playhead);
-  const selected = useEditor((s) => s.selectedOverlay);
-  const { edit, selectOverlay } = useEditor.getState();
-  const [draft, setDraft] = useState<{ index: number; x: number; y: number } | null>(null);
-  const drag = useRef<{ index: number; startX: number; startY: number; x: number; y: number; frame: DOMRect } | null>(null);
+  const selection = useEditor((s) => s.selection);
+  const select = useEditor((s) => s.select);
+  const [draft, setDraft] = useState<{ id: string; x: number; y: number } | null>(null);
+  const drag = useRef<{ id: string; startX: number; startY: number; x: number; y: number; frame: DOMRect } | null>(null);
 
-  const visible = overlaysAt(edl.overlays, sourceToOutput(playhead, edl.ranges));
-
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>, index: number) => {
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>, id: string) => {
     event.stopPropagation(); // don't pan the crop
     event.currentTarget.setPointerCapture(event.pointerId);
-    selectOverlay(index);
-    const overlay = edl.overlays[index];
+    select({ kind: "overlay", id });
+    const overlay = overlays.find((o) => o.id === id)!;
     const frame = event.currentTarget.parentElement!.getBoundingClientRect();
-    drag.current = { index, startX: event.clientX, startY: event.clientY, x: overlay.x, y: overlay.y, frame };
+    drag.current = { id, startX: event.clientX, startY: event.clientY, x: overlay.x, y: overlay.y, frame };
   };
   const onPointerMove = (event: PointerEvent) => {
     const d = drag.current;
     if (!d) return;
     setDraft({
-      index: d.index,
+      id: d.id,
       x: clamp(d.x + (event.clientX - d.startX) / d.frame.width, 0, 1),
       y: clamp(d.y + (event.clientY - d.startY) / d.frame.height, 0, 1),
     });
   };
   const onPointerUp = () => {
-    if (draft) {
-      edit((e) => ({
-        ...e,
-        overlays: e.overlays.map((o, i) => (i === draft.index ? { ...o, x: draft.x, y: draft.y } : o)),
-      }));
-    }
     drag.current = null;
-    setDraft(null);
+    if (!draft) return;
+    void run({ op: "update_overlay", id: draft.id, x: draft.x, y: draft.y }).finally(() => setDraft(null));
   };
 
   return (
     <>
-      {visible.map((index) => {
-        const overlay = edl.overlays[index];
-        const position = draft?.index === index ? draft : overlay;
-        return (
-          <div
-            key={index}
-            className={`overlay overlay-${overlay.style}${index === selected ? " selected" : ""}`}
-            style={{ left: `${position.x * 100}%`, top: `${position.y * 100}%` }}
-            onPointerDown={(event) => onPointerDown(event, index)}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-          >
-            {overlay.text}
-          </div>
-        );
-      })}
+      {overlays
+        .filter((o) => playhead >= o.start && playhead < o.end)
+        .map((overlay) => {
+          const position = draft?.id === overlay.id ? draft : overlay;
+          const selected = selection?.kind === "overlay" && selection.id === overlay.id;
+          return (
+            <div
+              key={overlay.id}
+              className={`overlay overlay-${overlay.style}${selected ? " selected" : ""}`}
+              style={{ left: `${position.x * 100}%`, top: `${position.y * 100}%` }}
+              onPointerDown={(event) => onPointerDown(event, overlay.id)}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+            >
+              {overlay.text}
+            </div>
+          );
+        })}
     </>
   );
 }

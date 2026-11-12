@@ -6,6 +6,10 @@ class AppValidationException(AppException):
     """The request is well-formed but not acceptable."""
 
 
+class AppConflictException(AppException):
+    """The entity changed since the caller last read it."""
+
+
 class NotFoundException(AppException):
     """The requested entity does not exist."""
 

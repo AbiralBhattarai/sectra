@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from src.adapters.input.rest.dependencies import get_job_service
-from src.domain.models.job import JobEvent
+from src.domain.models.app_event import AppEvent
 from src.ports.input.job_management_port import JobManagementPort
 
 router = APIRouter(prefix="/api", tags=["events"])
@@ -27,10 +27,10 @@ async def events(
     )
 
 
-async def _sse(source: AsyncIterator[JobEvent]) -> AsyncIterator[str]:
+async def _sse(source: AsyncIterator[AppEvent]) -> AsyncIterator[str]:
     # Pump through a queue: timing out on queue.get() is safe, while cancelling the
     # subscription's __anext__ would close the subscription.
-    queue: asyncio.Queue[JobEvent] = asyncio.Queue()
+    queue: asyncio.Queue[AppEvent] = asyncio.Queue()
 
     async def pump() -> None:
         async for event in source:
@@ -47,7 +47,7 @@ async def _sse(source: AsyncIterator[JobEvent]) -> AsyncIterator[str]:
                     pump_task.result()  # surface a dead subscription instead of idling forever
                 yield ": heartbeat\n\n"
                 continue
-            yield f"event: job\ndata: {event.model_dump_json()}\n\n"
+            yield f"event: {event.kind}\ndata: {event.model_dump_json()}\n\n"
     finally:
         pump_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

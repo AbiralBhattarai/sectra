@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from uuid import UUID
 
+from src.application.services.edit_media import check_files, media_durations
 from src.application.services.job_scheduler import JobScheduler
 from src.application.services.pipeline_dispatcher import ProgressCallback
 from src.domain.enums.job_status_enum import JobStatus
@@ -10,12 +11,14 @@ from src.domain.enums.video_file_enum import VideoFile
 from src.domain.exceptions import MediaProcessingException, NotFoundException
 from src.domain.models.edl import Edl
 from src.domain.models.job import Job
+from src.domain.models.render import MediaSource
 from src.domain.services.edl_rules import validate_edl
-from src.domain.services.render_planning import plan_render
+from src.domain.services.render_planning import MAIN, media_keys, plan_render
 from src.ports.input.clip_export_port import ExportFile
 from src.ports.output.clip_repository import ClipRepository
 from src.ports.output.file_storage_port import FileStoragePort
 from src.ports.output.job_repository import JobRepository
+from src.ports.output.media_port import MediaPort
 from src.ports.output.renderer_port import RendererPort
 from src.ports.output.video_repository import VideoRepository
 
@@ -36,6 +39,7 @@ class ClipExportService:
         storage: FileStoragePort,
         scheduler: JobScheduler,
         renderer: RendererPort | None = None,
+        media: MediaPort | None = None,
     ) -> None:
         self._clips = clips
         self._videos = videos
@@ -43,6 +47,7 @@ class ClipExportService:
         self._storage = storage
         self._scheduler = scheduler
         self._renderer = renderer
+        self._media = media
 
     async def request_export(self, clip_id: UUID) -> Job:
         clip = await self._clips.get(clip_id)
@@ -51,7 +56,12 @@ class ClipExportService:
         video = await self._videos.get(clip.video_id)
         if video is None or video.duration is None:
             raise NotFoundException(f"Video {clip.video_id} not found")
-        validate_edl(clip.edl, video.duration)
+        validate_edl(
+            clip.edl,
+            video.duration,
+            await media_durations(clip.edl, {video.id}, self._videos, self._storage),
+        )
+        check_files(clip.edl, self._storage)
         job = Job(
             type=JobType.EXPORT,
             clip_id=clip.id,
@@ -79,25 +89,44 @@ class ClipExportService:
 
     async def __call__(self, job: Job, report: ProgressCallback) -> None:
         """EXPORT stage."""
-        if self._renderer is None:
+        if self._renderer is None or self._media is None:
             raise RuntimeError("ClipExportService was built without a renderer")
         video_id = UUID(job.payload["video_id"])
-        video = await self._videos.get(video_id)
-        if video is None or not (video.width and video.height):
+        if await self._videos.get(video_id) is None:
             raise NotFoundException(f"Video {video_id} not found")
         edl = Edl.model_validate(job.payload["edl"])
         music = self._storage.music_path(edl.music.file) if edl.music else None
         if music is not None and not music.is_file():
             raise MediaProcessingException(f"Music track {edl.music.file} is missing")
 
+        inputs = {key: self._input_path(video_id, key) for key in media_keys(edl)}
+        sources = {}
+        for key, path in inputs.items():
+            if not path.is_file():
+                raise MediaProcessingException(f"Media {key} is missing")
+            if key.startswith("image:"):
+                width, height = await self._media.image_size(path)
+                sources[key] = MediaSource(width=width, height=height, has_audio=False)
+            else:
+                info = await self._media.probe(path)
+                sources[key] = MediaSource(
+                    width=info.width, height=info.height, has_audio=info.audio_codec is not None
+                )
         await self._renderer.render(
-            plan_render(edl, video.width, video.height),
-            self._storage.path(video_id, VideoFile.SOURCE),
+            plan_render(edl, sources),
+            inputs,
             music,
             self._storage.export_path(video_id, job.id, "mp4"),
             self._storage.export_path(video_id, job.id, "srt"),
             report,
         )
+
+    def _input_path(self, video_id: UUID, key: str) -> Path:
+        if key == MAIN:
+            return self._storage.path(video_id, VideoFile.SOURCE)
+        if key.startswith("image:"):
+            return self._storage.image_path(key.removeprefix("image:"))
+        return self._storage.path(UUID(key), VideoFile.SOURCE)
 
 
 def _slug(title: str) -> str:

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -32,6 +32,7 @@ class Job(BaseModel):
 class JobEvent(BaseModel):
     """Progress notification pushed to the UI whenever a job changes."""
 
+    kind: Literal["job"] = "job"
     job_id: UUID
     type: JobType
     status: JobStatus

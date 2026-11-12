@@ -4,6 +4,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.adapters.output.persistence.models import VideoRow
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.models.video import Video
 
@@ -43,6 +44,7 @@ def _to_domain(row: VideoRow) -> Video:
     return Video(
         id=row.id,
         title=row.title,
+        kind=VideoKind(row.kind),
         source_url=row.source_url,
         status=VideoStatus(row.status),
         duration=row.duration,

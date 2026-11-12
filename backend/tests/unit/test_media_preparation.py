@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import subprocess
 import wave
 from concurrent.futures import ThreadPoolExecutor
 
@@ -15,6 +16,7 @@ from src.application.services.media_preparation_service import (
 )
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_file_enum import VideoFile
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.exceptions import MediaProcessingException
 from src.domain.models.job import Job
 from src.domain.models.video import Video
@@ -48,8 +50,8 @@ def service(videos, storage, media):
     return MediaPreparationService(videos=videos, storage=storage, media=media)
 
 
-async def add_raw(videos, storage, **sample) -> Video:
-    video = Video(title="sample")
+async def add_raw(videos, storage, kind=VideoKind.SOURCE, **sample) -> Video:
+    video = Video(title="sample", kind=kind)
     await videos.add(video)
     make_video(storage.video_dir(video.id) / "raw.mp4", **sample)
     return video
@@ -105,6 +107,26 @@ async def test_video_without_audio_is_rejected(service, videos, storage):
 
     with pytest.raises(MediaProcessingException, match="no audio"):
         await service.normalize(Job(type=JobType.NORMALIZE, video_id=video.id), ignore)
+
+
+async def test_silent_assets_are_prepared_without_a_waveform(service, videos, storage, media):
+    video = await add_raw(videos, storage, kind=VideoKind.ASSET, width=640, height=360, audio=False)
+    await service.normalize(Job(type=JobType.NORMALIZE, video_id=video.id), ignore)
+    await service.prepare(Job(type=JobType.PREPARE, video_id=video.id), ignore)
+
+    assert (await media.probe(storage.path(video.id, VideoFile.SOURCE))).audio_codec is None
+    assert not storage.path(video.id, VideoFile.PEAKS).exists()
+    assert storage.path(video.id, VideoFile.THUMBNAIL).stat().st_size > 0
+
+
+async def test_image_size(media, tmp_path):
+    image = tmp_path / "a.png"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=size=400x300",
+         "-frames:v", "1", str(image)],
+        check=True,
+    )  # fmt: skip
+    assert await media.image_size(image) == (400, 300)
 
 
 async def test_prepare_writes_audio_peaks_and_thumbnail_but_no_proxy(

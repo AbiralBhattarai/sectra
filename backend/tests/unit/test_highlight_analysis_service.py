@@ -1,5 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,7 +16,7 @@ from src.application.services.highlight_analysis_service import HighlightAnalysi
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_file_enum import VideoFile
 from src.domain.exceptions import InvalidLLMOutputException, LLMException
-from src.domain.models.clip import Clip
+from src.domain.models.clip import Clip, ClipRevision
 from src.domain.models.job import Job
 from src.domain.models.video import Video
 from tests.unit.fakes import InMemoryVideoRepository
@@ -23,17 +24,60 @@ from tests.unit.transcript_builders import evenly, seg, transcript
 
 
 class InMemoryClipRepository:
+    """Hands out copies, like a database would; keeps every revision's EDL."""
+
     def __init__(self):
         self.by_video: dict = {}
+        self.revisions: dict = {}  # (clip id, revision) → (edl, label, actor)
 
     async def replace_for_video(self, video_id, clips):
-        self.by_video[video_id] = list(clips)
+        self.by_video[video_id] = [c.model_copy(deep=True) for c in clips]
 
     async def list_for_video(self, video_id):
         return sorted(self.by_video.get(video_id, []), key=lambda c: -c.score)
 
     async def get(self, clip_id):
+        clip = self._stored(clip_id)
+        return clip.model_copy(deep=True) if clip else None
+
+    async def commit_edit(self, clip, base_revision, label, actor):
+        stored = self._stored(clip.id)
+        if stored is None or stored.revision != base_revision:
+            return False
+        self.revisions.setdefault((clip.id, base_revision), (stored.edl, "Original", "analysis"))
+        for key in [k for k in self.revisions if k[0] == clip.id and k[1] > base_revision]:
+            del self.revisions[key]
+        clip.revision = base_revision + 1
+        self.revisions[(clip.id, clip.revision)] = (clip.edl, label, actor)
+        self._store(clip)
+        return True
+
+    async def revision_edl(self, clip_id, revision):
+        entry = self.revisions.get((clip_id, revision))
+        return entry[0] if entry else None
+
+    async def move_to_revision(self, clip, from_revision):
+        stored = self._stored(clip.id)
+        if stored is None or stored.revision != from_revision:
+            return False
+        self._store(clip)
+        return True
+
+    async def history(self, clip_id):
+        return [
+            ClipRevision(revision=r, label=label, actor=actor, created_at=datetime.now(UTC))
+            for (c, r), (_, label, actor) in sorted(self.revisions.items(), key=lambda i: i[0][1])
+            if c == clip_id
+        ]
+
+    def _stored(self, clip_id):
         return next((c for cs in self.by_video.values() for c in cs if c.id == clip_id), None)
+
+    def _store(self, clip):
+        clips = self.by_video[clip.video_id]
+        self.by_video[clip.video_id] = [
+            clip.model_copy(deep=True) if c.id == clip.id else c for c in clips
+        ]
 
 
 class ScriptedLLM:
@@ -123,7 +167,7 @@ async def test_single_clip_is_scored_from_its_ratings_and_captioned(storage, set
     [stored] = clips.by_video[video.id]
     assert isinstance(stored, Clip)
     assert (stored.title, stored.score, stored.start, stored.end) == ("Big idea", 70, 10.0, 30.0)
-    assert [(r.start, r.end) for r in stored.edl.ranges] == [(10.0, 30.0)]
+    assert [(r.start, r.end) for r in stored.edl.segments] == [(10.0, 30.0)]
     assert [w.text for w in stored.edl.captions.words] == ["segment 1", "segment 2"]
     assert llm.rank_calls() == []  # nothing to rank against
     _, system, user = llm.window_calls()[0]

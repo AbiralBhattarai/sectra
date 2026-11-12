@@ -6,7 +6,8 @@ from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.exceptions import AppValidationException, NotFoundException
-from src.domain.models.job import Job, JobEvent
+from src.domain.models.app_event import AppEvent
+from src.domain.models.job import Job
 from src.ports.output.job_repository import JobRepository
 from src.ports.output.progress_port import ProgressPort
 from src.ports.output.video_repository import VideoRepository
@@ -46,5 +47,5 @@ class JobService:
         await self._scheduler.resubmit(job)
         return job
 
-    def events(self) -> AsyncIterator[JobEvent]:
+    def events(self) -> AsyncIterator[AppEvent]:
         return self._progress.subscribe()

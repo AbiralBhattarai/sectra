@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from src.application.dto.job import JobDTO
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.models.job import Job
 from src.domain.models.video import Video
@@ -11,11 +12,13 @@ from src.domain.models.video import Video
 
 class AddVideoRequest(BaseModel):
     url: str = Field(min_length=1, pattern=r"^https?://")
+    kind: VideoKind = VideoKind.SOURCE
 
 
 class VideoDTO(BaseModel):
     id: UUID
     title: str
+    kind: VideoKind
     source_url: str | None
     status: VideoStatus
     duration: float | None

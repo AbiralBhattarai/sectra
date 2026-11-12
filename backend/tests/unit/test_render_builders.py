@@ -5,28 +5,43 @@ from src.adapters.output.renderer.ffmpeg_command import build_command
 from src.adapters.output.renderer.srt_builder import build_srt
 from src.domain.enums.caption_style_enum import CaptionStyle
 from src.domain.enums.overlay_style_enum import OverlayStyle
-from src.domain.models.edl import Captions, Edl, Music, Overlay
-from src.domain.models.render import CropMove
-from src.domain.models.speech import TimeSpan
+from src.domain.models.edl import (
+    Color,
+    Crop,
+    FreezeSegment,
+    ImageSegment,
+    Music,
+    Overlay,
+    Transition,
+)
+from src.domain.models.render import CropMove, MediaSource
 from src.domain.models.transcript import Word
 from src.domain.services.render_planning import plan_render
+from tests.unit.edl_builders import edl, seg, sources
 
 
-def plan(style=CaptionStyle.BOLD_HIGHLIGHT, music=None, overlays=(), split_screen=False):
-    edl = Edl(
-        ranges=[TimeSpan(start=10, end=12), TimeSpan(start=20, end=23)],
-        captions=Captions(
-            words=[
-                Word(text="hello", start=10.2, end=10.6),
-                Word(text="{world}", start=10.7, end=11.0),
-            ],
-            style=style,
-        ),
+def plan(style=CaptionStyle.BOLD_HIGHLIGHT, music=None, overlays=(), split_screen=False, **fields):
+    clip = edl(
+        (10, 12),
+        (20, 23),
+        captions=[
+            Word(text="hello", start=10.2, end=10.6),
+            Word(text="{world}", start=10.7, end=11.0),
+        ],
         overlays=list(overlays),
         music=music,
         split_screen=split_screen,
+        **fields,
     )
-    return plan_render(edl, 1920, 1080)
+    clip.captions.style = style
+    return plan_render(clip, sources())
+
+
+INPUTS = {"main": Path("/v/source.mp4")}
+
+
+def graph_of(args: list[str]) -> str:
+    return args[args.index("-filter_complex") + 1]
 
 
 def dialogues(ass: str) -> list[str]:
@@ -66,11 +81,11 @@ def test_srt_uses_output_time():
     assert build_srt(plan()) == "1\n00:00:00,200 --> 00:00:01,300\nhello {world}\n"
 
 
-def test_command_seeks_each_range_and_ducks_music():
+def test_command_seeks_each_segment_joins_them_and_ducks_music():
     music = Music(file="abc-beat.mp3", volume=0.2, duck=True)
     args = build_command(
         plan(music=music),
-        Path("/v/source.mp4"),
+        INPUTS,
         Path("/m/beat.mp3"),
         Path("/v/x.ass"),
         Path("/fonts"),
@@ -79,43 +94,124 @@ def test_command_seeks_each_range_and_ducks_music():
     joined = " ".join(args)
     assert "-ss 10.000 -t 2.000 -i /v/source.mp4 -ss 20.000 -t 3.000 -i /v/source.mp4" in joined
     assert "-stream_loop -1 -i /m/beat.mp3" in joined
-    graph = args[args.index("-filter_complex") + 1]
-    assert "[0:v:0][0:a:0][1:v:0][1:a:0]concat=n=2:v=1:a=1[cut][voice]" in graph
-    assert "crop=608:1080:656:0,scale=1080:1920" in graph
-    assert "subtitles=filename=/v/x.ass:fontsdir=/fonts" in graph
-    assert "[2:a:0]atrim=duration=5.000,volume=0.200[music]" in graph
+    graph = graph_of(args)
+    assert (
+        "[0:v:0]setpts=(PTS-STARTPTS)/1,fps=30,crop=608:1080:656:0,scale=1080:1920:flags=lanczos,"
+        in graph
+    )
+    assert "trim=duration=2.000,setpts=PTS-STARTPTS,format=yuv420p,setsar=1,fps=30[v0]" in graph
+    assert "[0:a:0]asetpts=PTS-STARTPTS,aformat=" in graph
+    assert "[v0][a0][v1][a1]concat=n=2:v=1:a=1[cv1][ja1];[cv1]fps=30[jv1]" in graph
+    assert (
+        "[jv1]setsar=1,subtitles=filename=/v/x.ass:fontsdir=/fonts,format=yuv420p[video]" in graph
+    )
+    assert "[2:a:0]atrim=duration=5.000,volume=0.200," in graph
     assert "sidechaincompress" in graph
     assert args[args.index("-map") + 3] == "[mix]"
+    assert args[args.index("-t", args.index("-filter_complex")) + 1] == "5.000"
 
 
 def test_command_without_music_maps_the_voice():
-    args = build_command(plan(), Path("s"), None, Path("a"), Path("f"), Path("o"))
+    args = build_command(plan(), INPUTS, None, Path("a"), Path("f"), Path("o"))
     assert "-stream_loop" not in args
     assert args[args.index("-map") + 3] == "[voice]"
 
 
-def test_split_screen_crops_both_halves_and_stacks_them():
-    args = build_command(plan(split_screen=True), Path("s"), None, Path("a"), Path("f"), Path("o"))
-    graph = args[args.index("-filter_complex") + 1]
+def test_transitions_crossfade_picture_and_sound_at_the_planned_offset():
+    clip = edl((10, 12), seg(20, 23, speed=2, transition=Transition(type="wipeleft", duration=0.5)))
+    graph = graph_of(
+        build_command(plan_render(clip, sources()), INPUTS, None, Path("a"), Path("f"), Path("o"))
+    )
+    assert "[v0][v1]xfade=transition=wipeleft:duration=0.500:offset=1.500[jv1]" in graph
+    assert "[a0][a1]acrossfade=d=0.500:c1=tri:c2=tri[ja1]" in graph
+    assert "setpts=(PTS-STARTPTS)/2," in graph and "atempo=2" in graph
+
+
+def test_stills_speed_volume_grade_and_fades():
+    clip = edl(
+        seg(
+            10,
+            12,
+            speed=0.25,
+            volume=1.5,
+            audio_fade_in=0.2,
+            color=Color(brightness=1.2, saturation=0),
+        ),
+        FreezeSegment(at=11, duration=1),
+        ImageSegment(image="a.png", duration=2),
+        fade_in=0.5,
+        fade_out=1,
+    )
+    image = {"image:a.png": MediaSource(width=400, height=400, has_audio=False)}
+    args = build_command(
+        plan_render(clip, sources(**image)),
+        {**INPUTS, "image:a.png": Path("/i/a.png")},
+        None,
+        Path("a"),
+        Path("f"),
+        Path("o"),
+    )
+    joined, graph = " ".join(args), graph_of(args)
+    assert "-ss 11.000 -t 1 -i /v/source.mp4" in joined
+    assert "-loop 1 -framerate 30 -t 2.000 -i /i/a.png" in joined
+    assert "atempo=0.5,atempo=0.5,volume=1.500,afade=t=in:st=0:d=0.200" in graph
+    assert "lutrgb=r='clip(val*1.2000+0.00,0,255)'" in graph
+    assert "colorchannelmixer=rr=0.2130:rg=0.7150:rb=0.0720" in graph
     assert (
-        "[cut]split=2[left][right];"
-        "[left]crop=960:854:0:113,scale=1080:960:flags=lanczos[top];"
-        "[right]crop=960:854:960:113,scale=1080:960:flags=lanczos[bottom];"
-        "[top][bottom]vstack=inputs=2,setsar=1,subtitles=filename=a:fontsdir=f[video]"
+        "[1:v:0]trim=end_frame=1,setpts=PTS-STARTPTS,fps=30,tpad=stop_mode=clone:stop_duration=1.000"
+        in graph
+    )
+    assert "anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=1.000" in graph
+    assert "fade=t=in:st=0:d=0.500,fade=t=out:st=10.000:d=1.000" in graph
+    assert "afade=t=in:st=0:d=0.500,afade=t=out:st=10.000:d=1.000[voice]" in graph
+
+
+def test_split_screen_crops_both_halves_and_stacks_them():
+    graph = graph_of(
+        build_command(plan(split_screen=True), INPUTS, None, Path("a"), Path("f"), Path("o"))
+    )
+    assert (
+        "fps=30,split=2[l0][r0];"
+        "[l0]crop=960:854:0:113,scale=1080:960:flags=lanczos[t0];"
+        "[r0]crop=960:854:960:113,scale=1080:960:flags=lanczos[u0];"
+        "[t0][u0]vstack=inputs=2,tpad"
     ) in graph
 
 
-def test_tracked_crop_is_a_step_function_of_output_time():
-    tracked = plan().model_copy(
-        update={
-            "crop_moves": [
-                CropMove(time=0, x=80, y=0),
-                CropMove(time=2.5, x=1232, y=0),
-                CropMove(time=4, x=80, y=0),
-            ]
-        }
+def test_tracked_crop_is_a_step_function_of_segment_time():
+    planned = plan()
+    planned.segments[0].crop_moves = [
+        CropMove(time=0, x=80, y=0),
+        CropMove(time=0.5, x=1232, y=0),
+        CropMove(time=1.5, x=80, y=0),
+    ]
+    args = build_command(planned, INPUTS, None, Path("a"), Path("f"), Path("o"))
+    assert "crop=608:1080:'80+1152*gte(t,0.500)-1152*gte(t,1.500)':'0'," in graph_of(args)
+    assert args.count("-i") == 2  # still one input per segment
+
+
+def test_ken_burns_zooms_then_crops_a_moving_window():
+    clip = edl(seg(0, 4, crop=Crop(), crop_to=Crop(scale=2)))
+    graph = graph_of(
+        build_command(plan_render(clip, sources()), INPUTS, None, Path("a"), Path("f"), Path("o"))
     )
-    args = build_command(tracked, Path("s"), None, Path("a"), Path("f"), Path("o"))
-    graph = args[args.index("-filter_complex") + 1]
-    assert "crop=608:1080:'80+1152*gte(t,2.500)-1152*gte(t,4.000)':'0'," in graph
-    assert graph.count("-i") == 0 and args.count("-i") == 2  # still one input per range
+    assert "zoompan=z='1080/(1080+-540*min(1,on/120.0))'" in graph
+    assert ":d=1:s=3414x1920:fps=30,crop=1080:1920:" in graph
+
+
+def test_broll_is_overlaid_during_its_span_and_mixed_when_audible():
+    other = "00000000-0000-0000-0000-0000000000b0"
+    clip = edl(
+        (0, 10), broll=[{"media": other, "start": 2, "duration": 3, "volume": 0.5, "fade": 0.5}]
+    )
+    planned = plan_render(
+        clip, sources(**{other: MediaSource(width=1920, height=1080, has_audio=True)})
+    )
+    args = build_command(
+        planned, {**INPUTS, other: Path("/b.mp4")}, None, Path("a"), Path("f"), Path("o")
+    )
+    graph = graph_of(args)
+    assert "-ss 0.000 -t 3.000 -i /b.mp4" in " ".join(args)
+    assert "fade=t=out:st=2.500:d=0.500:alpha=1,setpts=PTS+2.000/TB[b0]" in graph
+    assert "[v0][b0]overlay=x=0:y=0:eof_action=pass:enable='between(t,2.000,5.000)'[ov0]" in graph
+    assert "adelay=2000:all=1[ba0]" in graph and "[a0][ba0]amix" in graph

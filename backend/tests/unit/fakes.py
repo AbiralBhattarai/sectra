@@ -4,7 +4,8 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 from src.application.services.job_scheduler import JobScheduler
-from src.domain.models.job import Job, JobEvent
+from src.domain.models.app_event import AppEvent
+from src.domain.models.job import Job
 from src.domain.models.video import Video
 
 
@@ -59,12 +60,12 @@ class InMemoryVideoRepository:
 
 class RecordingProgress:
     def __init__(self) -> None:
-        self.events: list[JobEvent] = []
+        self.events: list[AppEvent] = []
 
-    async def publish(self, event: JobEvent) -> None:
+    async def publish(self, event: AppEvent) -> None:
         self.events.append(event)
 
-    async def subscribe(self) -> AsyncIterator[JobEvent]:
+    async def subscribe(self) -> AsyncIterator[AppEvent]:
         for event in self.events:
             yield event
 

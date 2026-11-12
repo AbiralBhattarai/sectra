@@ -134,17 +134,53 @@ Clips (ANALYZE):
 - Malformed JSON is retried once per window; if *every* window is malformed the
   stage fails. Provider errors fail it immediately. Re-analysis replaces the
   video's clips (`ClipRepository.replace_for_video`).
-- Each clip gets a default `Edl` (`domain/models/edl.py`): one range, 9:16, centre
-  crop, caption words copied from the transcript (source time).
+- Each clip gets a default `Edl` (`domain/models/edl.py`): one video segment, 9:16,
+  centre crop, caption words copied from the transcript (source time).
 - LLM adapters: `openai_compat` asks for `response_format: json_schema` and parses
   leniently (`<think>` blocks, code fences); `anthropic` forces a single tool whose
   `input_schema` is the schema. **The Anthropic SDK v2 is built on `httpx2`** —
   test mocks must use `httpx2.MockTransport`, not `httpx`.
 
+Editing (EDL v2, commands, history) — the API an MCP server will wrap:
+- `Edl.segments` is the main track, played in order (reorder/duplicate freely; source
+  times may repeat). Kinds: `video` (source span, speed 0.25–4, volume 0–2, audio
+  fades, `crop`/`crop_to` Ken Burns), `freeze` (one frame for `duration`), `image`.
+  `media` = another video's id (None = the clip's own). `transition` is *into* the
+  segment and overlaps the previous one (clip gets shorter). Overlays, B-roll and
+  markers are on the **output** timeline. Every item has a short `id`; commands and
+  LLMs address items by id, never by index. `kind` may be omitted (= video).
+- `domain/services/sequence.py` ≡ `frontend/src/editor/sequence.ts` (layout, output ↔
+  media time, per-segment caption cues cut at transition midpoints); tests mirror each
+  other. `framing.crop_at(edl, segment, t)` ≡ `crop.ts cropAt`; `color_grading` maps a
+  `Color` (CSS filter semantics) to lutrgb + colorchannelmixer with the CSS-spec
+  matrices, so preview and render grade identically.
+- **Every edit is a command** (`domain/models/edit_command.py`, a union on `op` with
+  `description`s → `GET /api/edit-commands/schema`), applied by the pure
+  `edl_commands.apply_all` and validated after each one (errors name the command
+  number and id). `POST /api/clips/{id}/edits {commands, base_revision?, dry_run?,
+  actor}` applies a batch as **one revision**; stale `base_revision` → 409. Captions
+  follow source coverage (edited words kept, newly covered words from the transcript).
+- History: `clips.revision` is a cursor into `clip_revisions` (EDL snapshot, label,
+  actor; 200 kept). The first edit records revision 0 ("Original"); a new edit after
+  undo drops the redo branch. `/undo`, `/redo`, `/history`, and `GET /timeline`
+  (segments with output times + the words said in each — written for LLMs). Clip
+  responses carry `can_undo/can_redo`.
+- Every change publishes a `ClipEvent` on the `job-events` pub/sub channel (events
+  are a union on `kind`); `/api/events` relays it as `event: clip` and the editor
+  reloads when the revision isn't its own (`useClipSync`).
+- `PUT /api/clips/{id}` still replaces the whole EDL (one revision).
+- Migration 0004 converted v1 EDLs (`ranges`) in `clips` and export job payloads.
+
+Assets (Phase 2):
+- `Video.kind`: `source` (mined for clips) or `asset` (B-roll): assets stop after
+  PREPARE (dispatcher) and may be silent (normalize maps `0:a:0?`, prepare skips the
+  waveform). Upload/URL with `?kind=asset`; `GET /api/videos?kind=`. Any video with a
+  `source.mp4` can be used as segment/B-roll media (`edit_media.media_durations`).
+- Images: `data/images/<8 hex>-<slug>.<ext>` via `ImageLibraryService` (`/api/images`).
+  ffprobe gives stills no duration, so the export sizes them with `MediaPort.image_size`.
+
 Overlays & music:
-- `Edl.overlays` times are on the **output** (clip) timeline, unlike everything
-  else; the timeline lane maps them with `outputToSource`. Styles: `OverlayStyle`
-  (`title`, `label`).
+- Overlay styles: `OverlayStyle` (`title`, `label`).
 - Built-in music: 90 CC0 tracks in `assets/music/manifest.json` (source + license
   per track); `make music` (`scripts/fetch_music.py`, stdlib, host Python 3.9-safe)
   downloads them; mp3s are gitignored. Mounted read-only at `/opt/music`
@@ -162,12 +198,22 @@ Export (EXPORT job, `jobs:render` stream):
   never fails the video), payload snapshots the EDL + title. Files go to
   `data/videos/<video_id>/exports/<job_id>.{mp4,srt}`; downloads at
   `/api/exports/<job_id>/{video,subtitles}`. No exports table.
-- `domain/services/render_planning.plan_render` resolves the EDL to output
-  pixels/time (`framing`, `caption_pages`, `edl_timing` are exact ports of the
-  frontend's `crop.ts`, `captions.ts`, `edlOps.ts` — tests mirror the TS cases).
+- The worker probes every input (`render_planning.media_keys`: `main`, a video id,
+  `image:<file>`); `plan_render(edl, sources)` resolves each segment to an input, crop
+  boxes (or tracking moves / Ken Burns end box), grade, speed and output offset
+  (`framing`, `caption_pages`, `sequence` are exact ports of the frontend's TS).
 - `adapters/output/renderer/`: `ass_builder` (captions + overlays for libass),
-  `srt_builder`, `ffmpeg_command` (one `-ss/-t` input per range → concat → crop →
-  scale → subtitles; music `-stream_loop`ed, `sidechaincompress`ed by the voice).
+  `srt_builder`, `ffmpeg_command`: one input per segment (`-ss/-t`; freeze = one frame
+  + `tpad`; image = `-loop 1`), each normalised to WxH yuv420p, **30 fps**
+  (`OUTPUT_FPS`), exact length, 48 kHz stereo; folded left with `xfade`+`acrossfade`
+  (transition) or `concat` (cut); B-roll `overlay`s with `enable=between()`; clip
+  fades; subtitles; music `-stream_loop`ed, `sidechaincompress`ed by the voice.
+- **ffmpeg 7 (worker) unsets the frame rate after `setpts` and `concat`** and `xfade`
+  then refuses the input ("1/0 is invalid"): every segment chain ends in `fps=30`, and
+  each `concat` output goes through `fps=30`. Host ffmpeg 9 doesn't mind — test renders
+  in the worker image.
+- Ken Burns: `crop` can't change size per frame, so `zoompan` (source-aspect window,
+  constant output size) then a moving `crop` cuts the output aspect out of it.
 - **libass sizes fonts by Windows ascent+descent**, not the em: ASS size = CSS em
   × 1.562 for Montserrat (measured). Change fonts → re-measure `ASS_SIZE_PER_EM`.
 - Inline ASS colours are `\c&HBBGGRR&`; style colours are `&HAABBGGRR`.
@@ -179,10 +225,11 @@ Export (EXPORT job, `jobs:render` stream):
 
 Face tracking (TRACK job, `jobs:tracking` stream):
 - "Face tracking" checkbox → `POST /api/clips/{id}/tracking` → a TRACK job over the clip's
-  bounds ± 2 s. A queued/running/succeeded job that covers the ranges is **reused**.
-  The worker writes `data/videos/<video_id>/tracking/<job_id>.json`; the **editor**
-  applies it to the EDL (`GET /api/tracking/{job_id}` → `mergeTracking`), so autosave
-  can't clobber it. Trimming past `tracking.span` re-tracks and keeps the old shots.
+  bounds ± 2 s. A queued/running/succeeded job that covers them is **reused**.
+  The worker writes `data/videos/<video_id>/tracking/<job_id>.json` and **merges it into
+  the clip itself** (`ClipEditingService.apply_tracking` → `edl_commands.merge_tracking`,
+  actor `tracking`, retried on conflict); the editor picks it up from the clip event.
+  Trimming past `tracking.span` re-tracks and keeps the old shots.
 - `OnnxFaceTrackerAdapter`: ffmpeg streams 25 fps `bgr24` (long side ≤ 1280) → YuNet
   faces → greedy IoU tracker → Light-ASD scores per frame from 112 px grayscale crops +
   MFCC (`python_speech_features`, must match training). It holds its own semaphore, not
@@ -195,8 +242,9 @@ Face tracking (TRACK job, `jobs:tracking` stream):
   positive score per frame (held through silence), merges shots < 1.5 s.
 - `Edl.tracking.shots` are source time with x/y only; **zoom is shared** (`edl.crop.scale`)
   so the crop size never changes and the render switches position with a step
-  expression in the crop filter (`RenderPlan.crop_moves`) — no extra inputs.
-  `framing.crop_at` ≡ `crop.ts cropAt`. Tracking on ⇒ `split_screen` is ignored.
+  expression in the crop filter (`PlannedSegment.crop_moves`, segment-local time).
+  Tracking and split screen apply only to clip-video segments without their own
+  `crop`; tracking on ⇒ `split_screen` is ignored. Reframing a shot = `reframe_shot`.
 
 ## Things that will bite you
 
@@ -224,25 +272,35 @@ test) and Redis db 15 (flushed per test). Application tests use the in-memory
 fakes in `tests/unit/fakes.py`. Media tests generate clips with the host's
 `ffmpeg` (`tests/unit/media_samples.py`).
 
+The real render test needs libass, so run it in the worker image (it has no pytest):
+`docker run --rm --entrypoint sh -v $PWD/backend/src:/app/src -v $PWD/backend/tests:/app/tests
+-v $PWD/backend/pyproject.toml:/app/pyproject.toml:ro -v $PWD/assets/fonts:/opt/fonts:ro
+sectra-worker -c 'cd /app && uv pip install --python /opt/venv/bin/python -q pytest
+pytest-asyncio httpx && /opt/venv/bin/python -m pytest tests/unit/test_export.py -k real_render'`.
+
 ## Frontend
 
 Editor (`frontend/src/editor/`, `timeline/`):
-- One zustand store (`editor/store.ts`) shared by the middle panel and the bottom
-  timeline; zundo tracks **only `edl`**. Every edit goes through `edit(fn)` = one
-  undo step, so drags (trim handles, crop pan, zoom slider) keep a local draft
-  and commit once on release.
-- Pure logic lives in `edlOps.ts`, `captions.ts`, `crop.ts` with vitest tests
-  (`docker compose exec web npx vitest run`). `captions.paginate` and
-  `crop.cropWindow` define what the export must reproduce — the backend renderer
-  has to port them exactly.
+- One zustand store (`editor/store.ts`) holds the server's EDL + revision; **the
+  frontend never edits the EDL itself** — every change is `run(...commands)`
+  (`editor/commands.ts`: one request at a time, each against the latest revision; 409
+  reloads). Undo/redo are server calls. Drags (trim, reorder, transition length, crop,
+  sliders) keep a local draft and send one command on release.
+- The playhead is **output time**. `editor/player/`: a wall-clock engine
+  (`useEngine.ts`) steers two `<video>` slots (segments alternate, so the next one is
+  preloaded and both show during a transition), B-roll elements and Web Audio gains;
+  `playback.ts` (pure, tested) has slot assignment, CSS transition looks, filters, gains.
+- Pure logic with vitest tests (`docker compose run --rm --no-deps web npx vitest run`):
+  `sequence.ts`, `captions.ts`, `crop.ts`, `player/playback.ts`, `timeline/drafts.ts`,
+  `timeline/snapping.ts`. `captions.paginate`, `crop.cropWindow` and `sequence.ts`
+  define what the export must reproduce — the backend has to port them exactly.
 - `Edl.split_screen` ("OmeTV split"): left half of the source over the right half;
   `crop` frames each half identically (`crop_window(..., split=True)`). The preview's
   bottom pane is a `<canvas>` drawn from the one `<video>` every frame — a second
   `<video>` would drift. The render does `split → crop ×2 → vstack`.
-- Captions follow the ranges (`withRanges`): edited words that stay kept are
-  preserved; newly kept stretches are filled from the transcript.
-- `useAutosave` PUTs the EDL 800 ms after the last change, one request at a time,
-  and flushes when switching clips. The backend re-validates (`edl_rules.py`).
+- Side panel tabs: Edit (inspector for the selection), Media (bin; drag onto the Video
+  or B-roll lane), Source (mark in/out on any video), Captions, Text, Music, Export.
+  Shortcuts live in `useShortcuts.ts` (`SHORTCUTS` is shown in the inspector).
 - Caption presets size text in `cqmin` (fraction of the frame's shorter side) with
   the bundled Montserrat files from `assets/fonts` (mounted at `/fonts`).
 - The timeline is custom (canvas waveform + lanes on one time→px scale), not
@@ -252,14 +310,14 @@ Editor (`frontend/src/editor/`, `timeline/`):
   `ErrorBoundary`, so a panel crash shows an error instead of a blank page.
 - Clip cards have one-click **Download** (`panels/useClipDownloads.ts`): reuse an
   export newer than the clip's `updated_at`, else render and auto-download on the
-  SSE success event. Blocked while the open clip has unsaved edits.
+  SSE success event. Blocked while an edit of the open clip is being applied.
 
 UI checks without a desktop browser: run Playwright headless in Docker on the web
 container's network (so `localhost:5173` is Vite and its host check passes):
 `docker run --rm --network container:sectra-web-1 -v <dir>:/ui
 mcr.microsoft.com/playwright/python:v1.64.1-noble sh -c 'pip install
 --break-system-packages playwright==1.64.1 && python /ui/script.py'`. Its
-Chromium plays the H.264 proxy fine.
+Chromium plays `source.mp4` fine; reach the API through Vite (`localhost:5173/api`).
 
 Node is **not** installed on the host; run npm inside the `web` container
 (`docker compose exec web npm …`). `node_modules` lives in an anonymous volume,

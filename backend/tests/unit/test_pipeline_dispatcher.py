@@ -4,6 +4,7 @@ from src.application.services.ping_service import PingService
 from src.application.services.pipeline_dispatcher import PipelineDispatcher
 from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.models.job import Job
 from src.domain.models.video import Video
@@ -56,6 +57,18 @@ async def test_success_queues_the_next_stage_for_the_video(fakes):
     [queued] = fakes.queue.enqueued
     assert (queued.type, queued.video_id) == (JobType.NORMALIZE, video.id)
     assert fakes.videos.videos[video.id].status is VideoStatus.PROCESSING
+
+
+async def test_assets_are_ready_after_preparation(fakes):
+    video = Video(title="b-roll", kind=VideoKind.ASSET)
+    await fakes.videos.add(video)
+    job = Job(type=JobType.PREPARE, video_id=video.id)
+    await fakes.jobs.add(job)
+
+    await dispatcher(fakes, {JobType.PREPARE: noop}).run_job(job.id)
+
+    assert fakes.queue.enqueued == []  # no VAD, transcription or clip finding
+    assert fakes.videos.videos[video.id].status is VideoStatus.READY
 
 
 async def test_last_stage_marks_video_ready(fakes):

@@ -20,12 +20,18 @@ any OpenAI-compatible transcription API.
   proposes clips. Sectra snaps them to sentence boundaries, keeps them 15–60 s,
   removes duplicates and keeps the best 10.
 - **Editor:**
-  - live preview with trim, split and delete
-  - 9:16, 1:1 or 16:9 output with a draggable crop and zoom
-  - editable caption words and timing, with style presets
-  - text overlays and background music with automatic ducking
-  - undo/redo and autosave
-- **Timeline:** waveform, kept ranges with trim handles, speech, captions and overlays.
+  - a sequence timeline: split, ripple trim/delete, drag to reorder, duplicate,
+    copy/paste, snapping, markers
+  - transitions (crossfade, dip to black/white, wipes, slides, circle, zoom)
+  - per segment: speed (0.25–4×), volume/mute, audio fades, colour grade and presets,
+    own framing with Ken Burns zoom/pan, freeze frames
+  - B-roll videos and images (full frame or picture-in-picture) and image segments
+  - 9:16, 1:1 or 16:9 output with a draggable crop and zoom, clip fade in/out
+  - editable captions with style presets, text overlays, background music with ducking
+  - server-side undo/redo; every edit is a command on `POST /api/clips/{id}/edits`
+    (the API an MCP server will use), and edits made elsewhere show up live
+- **Timeline:** output-time lanes for video (with waveform), transitions, B-roll, text,
+  captions, music, markers and face-tracking shots.
 - **Export:** 1080p H.264 MP4 with captions and overlays burned in (rendered with the
   same fonts as the preview), plus an `.srt` file. Each clip card also has a one-click
   **Download** that renders the clip if needed.
@@ -39,7 +45,7 @@ URL / upload ─▶ ingest ─▶ normalize ─▶ prepare ─▶ VAD ─▶ tra
                (yt-dlp)   (≤1080p)    (proxy,     (Silero)  (Whisper)    (LLM)
                                        audio,
                                        waveform)
-clip ─▶ editor (edit decision list, autosaved) ─▶ export (ffmpeg + libass) ─▶ MP4 + SRT
+clip ─▶ editor (edit commands → EDL revisions) ─▶ export (ffmpeg + libass) ─▶ MP4 + SRT
 ```
 
 Each stage is a background job on a Redis Stream, processed by an async worker.
@@ -251,19 +257,28 @@ run the backend on the host.
 
 | Action                          | How                                                       |
 | ------------------------------- | --------------------------------------------------------- |
-| Play / pause                    | `Space`, or click the preview                             |
-| Trim                            | Drag a range's edge handle on the timeline                |
-| Cut a section out               | Put the playhead in it, press `S` twice, select the middle range, press `Delete` |
+| Play / pause                    | `Space` (`J`/`K`/`L`: back 1 s / pause / play)            |
+| Step / jump                     | `←`/`→` one frame (`⇧` = 1 s), `↑`/`↓` previous/next cut  |
+| Split / delete                  | `S` at the playhead / select a block, `Delete` (ripple)   |
+| Trim                            | Drag a block's edge on the timeline                       |
+| Reorder                         | Drag a block along the Video lane                         |
+| Duplicate / copy / paste        | `⌘D` / `⌘C` / `⌘V` (pastes at the playhead)               |
+| Transition                      | `T` (nearest cut), the `+` on a cut, or right-click a block; select the chip to change type/length |
+| Speed, volume, colour, framing  | Select a block → **Edit** tab (or right-click it)         |
+| Freeze frame                    | Right-click → *Freeze frame here*, or the **Edit** tab    |
+| B-roll / images                 | **Media** tab → upload, then drag onto the Video or B-roll lane |
+| Part of another video           | **Source** tab → mark in/out → insert, append or B-roll   |
+| Markers / snapping              | `M` / `N`                                                 |
 | Undo / redo                     | `⌘Z` / `⇧⌘Z` (`Ctrl` on Windows/Linux)                    |
 | Reframe                         | Drag the picture; use the Zoom slider                     |
 | Zoom / pan the timeline         | `⌘`/`Ctrl` + scroll / scroll                              |
-| Fix a caption                   | **Captions** tab → click a word → edit text or timing     |
+| Fix a caption                   | **Captions** tab → click a word → edit its text           |
 | Add a text overlay              | **Text** tab → *Add text at playhead*, then drag it on the preview |
 | Background music                | **Music** tab → upload or pick a track, set volume and ducking |
 | Render                          | **Export** tab → *Export MP4 + captions* → download       |
 
-Edits save automatically shortly after you stop. The toolbar shows the save state,
-and export is enabled once everything is saved.
+Every edit is saved on the server as it happens (one undo step each). The toolbar
+shows when an edit is being applied or was rejected, and why.
 
 ## Development
 
@@ -326,8 +341,9 @@ the deeper notes.
 ```
 frontend/src/
 ├── panels/        # sources (left) and clips (right)
-├── editor/        # store (zustand + zundo), preview, captions/overlay/music/export tabs, pure EDL logic
-└── timeline/      # canvas waveform + lanes
+├── editor/        # store, commands (edit API), player/, inspector, media bin, source monitor, tabs,
+│                  #   pure maths mirrored from the backend (sequence, crop, captions)
+└── timeline/      # output-time lanes, drag drafts, snapping
 ```
 
 ## Data
@@ -338,6 +354,7 @@ Everything lives in `./data` (bind-mounted) and in Docker volumes:
 data/videos/<id>/   source.mp4 (also what the editor plays), audio.wav, peaks.json, thumbnail.jpg,
                     speech.json, transcript.json, exports/<export-id>.{mp4,srt}
 data/music/         uploaded background tracks
+data/images/        uploaded images (image segments, B-roll)
 assets/music/       built-in CC0 library (manifest committed, mp3s from `make music`)
 ```
 

@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from src.adapters.output.storage.local_fs_storage_adapter import LocalFsStorageAdapter
+from src.application.services.clip_editing_service import ClipEditingService
 from src.application.services.clip_tracking_service import ClipTrackingService
 from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
@@ -37,7 +38,7 @@ async def setup(storage):
     fakes = Fakes()
     video = Video(title="talk", duration=200, width=1920, height=1080)
     await fakes.videos.add(video)
-    clip = make_clip(video, start=50, score=90)  # ranges 50-70
+    clip = make_clip(video, start=50, score=90)  # one segment, 50-70
     clips = InMemoryClipRepository()
     await clips.replace_for_video(video.id, [clip])
 
@@ -49,9 +50,11 @@ async def setup(storage):
             storage=storage,
             scheduler=fakes.scheduler,
             tracker=FakeTracker(list(tracks)),
+            editing=ClipEditingService(clips, fakes.videos, storage, fakes.progress),
             min_shot_seconds=1,
         )
 
+    service.clips = clips
     return fakes, clip, service
 
 
@@ -91,6 +94,12 @@ async def test_stage_writes_shots_that_the_result_endpoint_reads(setup):
     assert [(s.start, s.face, s.x, s.y) for s in result.shots] == [(48, 0, 0.3, 0.4)]
     assert worker._tracker.calls == [
         ("source.mp4", "audio.wav", TimeSpan(start=48, end=72), (1920, 1080))
+    ]
+    # The worker also merged it into the clip, as a revision of its own.
+    edited = await service.clips.get(clip.id)
+    assert edited.revision == 1 and edited.edl.tracking.enabled
+    assert [(e.kind, e.actor) for e in fakes.progress.events if e.kind == "clip"] == [
+        ("clip", "tracking")
     ]
 
 

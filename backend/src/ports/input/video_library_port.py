@@ -6,22 +6,25 @@ from typing import Protocol
 from uuid import UUID
 
 from src.domain.enums.video_file_enum import VideoFile
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.models.job import Job
 from src.domain.models.video import Video
 
 
 class VideoLibraryPort(Protocol):
-    async def add_from_url(self, url: str) -> Video:
+    async def add_from_url(self, url: str, kind: VideoKind = VideoKind.SOURCE) -> Video:
         """Register the video and queue its download."""
         ...
 
-    async def add_upload(self, filename: str, chunks: AsyncIterator[bytes]) -> Video:
+    async def add_upload(
+        self, filename: str, chunks: AsyncIterator[bytes], kind: VideoKind = VideoKind.SOURCE
+    ) -> Video:
         """Store the uploaded file and queue its processing. Raises
         ``AppValidationException`` for unsupported file types."""
         ...
 
-    async def list(self) -> list[tuple[Video, Job | None]]:
-        """Videos newest first, each with its most recent job."""
+    async def list(self, kind: VideoKind | None = None) -> list[tuple[Video, Job | None]]:
+        """Videos (of ``kind``, if given) newest first, each with its most recent job."""
         ...
 
     async def get(self, video_id: UUID) -> tuple[Video, Job | None]: ...

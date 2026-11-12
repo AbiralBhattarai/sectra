@@ -25,7 +25,7 @@ body {
 .app {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 320px;
-  grid-template-rows: minmax(0, 1fr) 222px; /* fits every timeline lane, incl. face-tracking shots */
+  grid-template-rows: minmax(0, 1fr) 290px; /* fits every timeline lane, incl. face-tracking shots */
   grid-template-areas:
     "sources editor clips"
     "timeline timeline timeline";
@@ -578,8 +578,8 @@ button.word.selected {
   padding-left: 3px;
 }
 
-.wave-lane {
-  height: 64px;
+.video-lane {
+  height: 56px;
   background: var(--bg);
   border-radius: 4px;
 }
@@ -592,15 +592,63 @@ button.word.selected {
   color: #4b5563;
 }
 
-.range {
-  background: rgb(79 140 255 / 22%);
-  border: 1px solid rgb(79 140 255 / 70%);
+/* A main-track segment; each kind has its own tint. */
+.segment {
+  background: rgb(79 140 255 / 18%);
+  border: 1px solid rgb(79 140 255 / 55%);
   border-radius: 3px;
+  overflow: visible;
+  cursor: grab;
+  touch-action: none;
 }
 
-.range.selected {
+.segment-freeze {
+  background: rgb(120 200 255 / 18%);
+  border-color: rgb(120 200 255 / 55%);
+}
+
+.segment-image {
+  background: rgb(200 140 255 / 18%);
+  border-color: rgb(200 140 255 / 55%);
+}
+
+.segment.selected,
+.item.selected {
   background: rgb(79 140 255 / 38%);
   border-color: var(--accent);
+  z-index: 1;
+}
+
+.segment.ghost {
+  opacity: 0.4;
+}
+
+.segment-label {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 2px;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+}
+
+.segment .handle,
+.item .handle,
+.transition-chip .handle {
+  opacity: 0;
+}
+
+.segment:hover .handle,
+.segment.selected .handle,
+.item:hover .handle,
+.item.selected .handle,
+.transition-chip:hover .handle,
+.transition-chip.selected .handle {
+  opacity: 1;
 }
 
 .handle {
@@ -621,15 +669,6 @@ button.word.selected {
 .handle.end {
   right: -4px;
   border-radius: 0 3px 3px 0;
-}
-
-.speech-lane {
-  height: 6px;
-}
-
-.speech-lane span {
-  background: #3ecf8e66;
-  border-radius: 2px;
 }
 
 .caption-lane {
@@ -661,7 +700,7 @@ button.word.selected {
 /* ---------- Side panel, overlays, music ---------- */
 
 .side-panel {
-  width: 270px;
+  width: 300px;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -671,6 +710,7 @@ button.word.selected {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   border-bottom: 1px solid var(--border);
 }
@@ -680,7 +720,8 @@ button.word.selected {
   background: none;
   color: var(--muted);
   border-radius: 6px 6px 0 0;
-  padding: 6px 4px;
+  padding: 6px 2px;
+  font-size: 12px;
 }
 
 .tabs button.active {
@@ -841,4 +882,335 @@ a.button {
 .track-picker select {
   flex: 1;
   min-width: 0;
+}
+
+/* ---------- Full editor: preview layers ---------- */
+
+.segment-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.segment-layer img {
+  position: absolute;
+  max-width: none;
+}
+
+.wash {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.broll {
+  position: absolute;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.broll-full {
+  object-fit: cover;
+}
+
+.broll-pip {
+  object-fit: fill;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 50%);
+}
+
+.broll.selected {
+  outline: 2px solid var(--accent);
+}
+
+.caption-layer,
+.overlay {
+  z-index: 60;
+}
+
+/* ---------- Full editor: timeline lanes ---------- */
+
+.track.busy {
+  cursor: progress;
+}
+
+.marker-lane {
+  height: 10px;
+}
+
+.marker {
+  width: 9px;
+  margin-left: -4px;
+  background: #f2c94c;
+  clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+  cursor: pointer;
+}
+
+.transition-chip {
+  top: 12px !important;
+  bottom: 12px !important;
+  background: rgb(242 201 76 / 35%);
+  border: 1px solid #f2c94c;
+  border-radius: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.transition-chip.selected {
+  background: rgb(242 201 76 / 65%);
+}
+
+.transition-chip .handle {
+  background: #f2c94c;
+  width: 6px;
+}
+
+.chip-label {
+  position: static !important;
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.cut-add {
+  position: absolute;
+  bottom: 2px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 14px;
+  border-radius: 50%;
+  z-index: 3;
+  opacity: 0;
+}
+
+.video-lane:hover .cut-add {
+  opacity: 0.8;
+}
+
+.drop-marker {
+  width: 2px;
+  margin-left: -1px;
+  background: #f2c94c;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.video-lane.drop,
+.broll-lane.drop {
+  outline: 1px dashed #f2c94c;
+}
+
+.broll-lane,
+.overlay-lane {
+  height: 22px;
+}
+
+.broll-lane {
+  background: var(--bg);
+  border-radius: 4px;
+}
+
+.item {
+  background: rgb(62 207 142 / 22%);
+  border: 1px solid rgb(62 207 142 / 60%);
+  border-radius: 3px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.overlay-lane .item {
+  background: rgb(255 140 90 / 22%);
+  border-color: rgb(255 140 90 / 60%);
+}
+
+.item .segment-label {
+  top: 3px;
+}
+
+.music-lane {
+  height: 14px;
+}
+
+.music-lane span {
+  background: rgb(200 140 255 / 20%);
+  border-radius: 3px;
+  font-size: 9px;
+  line-height: 14px;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 50%);
+  min-width: 180px;
+}
+
+.context-menu button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  padding: 5px 8px;
+}
+
+.context-menu button:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.context-menu .separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+label.checkbox.small {
+  font-size: 12px;
+}
+
+/* ---------- Full editor: side panel ---------- */
+
+.inspector h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.inspector h4,
+.media-bin h4 {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inspector section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chips.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.chips button.active {
+  background: var(--accent);
+}
+
+.field.slider span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.field.number {
+  flex: 1;
+  min-width: 70px;
+}
+
+.field.number input {
+  width: 100%;
+}
+
+.shortcuts {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.shortcuts div {
+  display: flex;
+  gap: 8px;
+}
+
+.shortcuts dt {
+  min-width: 80px;
+  color: var(--muted);
+}
+
+.shortcuts dd {
+  margin: 0;
+}
+
+.media-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.media-item[draggable="true"] {
+  cursor: grab;
+}
+
+.media-item img {
+  width: 64px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+
+.media-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.media-meta > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-monitor:focus {
+  outline: none;
+}
+
+.source-video {
+  width: 100%;
+  max-height: 200px;
+  background: black;
+  border-radius: 4px;
+}
+
+.overlay-list li.row button.word {
+  flex: 1;
+}
+
+.overlay-list li.row button.small {
+  width: auto;
 }

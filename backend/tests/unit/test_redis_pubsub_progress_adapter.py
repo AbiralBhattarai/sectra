@@ -4,6 +4,7 @@ from uuid import uuid4
 from src.adapters.output.events.redis_pubsub_progress_adapter import RedisPubSubProgressAdapter
 from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
+from src.domain.models.app_event import ClipEvent
 from src.domain.models.job import JobEvent
 
 
@@ -28,4 +29,7 @@ async def test_subscriber_receives_published_events(redis):
     await adapter.publish(sent)
 
     assert await asyncio.wait_for(first, 5) == sent
+    clip = ClipEvent(clip_id=uuid4(), video_id=uuid4(), revision=2, actor="editor")
+    await adapter.publish(clip)
+    assert await asyncio.wait_for(anext(events), 5) == clip  # both kinds share the channel
     await events.aclose()

@@ -5,6 +5,7 @@ from uuid import UUID
 from src.application.services.job_scheduler import JobScheduler
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_file_enum import VideoFile
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.exceptions import AppValidationException, NotFoundException
 from src.domain.models.job import Job
@@ -29,13 +30,15 @@ class VideoLibraryService:
         self._storage = storage
         self._scheduler = scheduler
 
-    async def add_from_url(self, url: str) -> Video:
-        video = Video(title=url, source_url=url)
+    async def add_from_url(self, url: str, kind: VideoKind = VideoKind.SOURCE) -> Video:
+        video = Video(title=url, source_url=url, kind=kind)
         await self._videos.add(video)
         await self._scheduler.submit(Job(type=JobType.INGEST, video_id=video.id))
         return video
 
-    async def add_upload(self, filename: str, chunks: AsyncIterator[bytes]) -> Video:
+    async def add_upload(
+        self, filename: str, chunks: AsyncIterator[bytes], kind: VideoKind = VideoKind.SOURCE
+    ) -> Video:
         name = PurePath(filename)
         extension = name.suffix.lower().lstrip(".")
         if extension not in UPLOAD_EXTENSIONS:
@@ -43,7 +46,7 @@ class VideoLibraryService:
                 f"Unsupported file type '.{extension}'; expected one of "
                 + ", ".join(sorted(UPLOAD_EXTENSIONS))
             )
-        video = Video(title=name.stem or filename)
+        video = Video(title=name.stem or filename, kind=kind)
         try:
             await self._storage.save_upload(video.id, extension, chunks)
         except BaseException:
@@ -54,8 +57,8 @@ class VideoLibraryService:
         await self._scheduler.submit(Job(type=JobType.NORMALIZE, video_id=video.id))
         return video
 
-    async def list(self) -> list[tuple[Video, Job | None]]:
-        videos = await self._videos.list()
+    async def list(self, kind: VideoKind | None = None) -> list[tuple[Video, Job | None]]:
+        videos = [v for v in await self._videos.list() if kind is None or v.kind is kind]
         latest = await self._jobs.latest_for_videos([v.id for v in videos])
         return [(video, latest.get(video.id)) for video in videos]
 
@@ -71,6 +74,8 @@ class VideoLibraryService:
 
     async def find_clips_again(self, video_id: UUID) -> Job:
         video = await self._require(video_id)
+        if video.kind is VideoKind.ASSET:
+            raise AppValidationException("Assets aren't searched for clips")
         if video.status is VideoStatus.PROCESSING:
             raise AppValidationException("The video is still being processed")
         if not self._storage.path(video_id, VideoFile.TRANSCRIPT).is_file():

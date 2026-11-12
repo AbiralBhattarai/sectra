@@ -39,10 +39,21 @@ export interface Export extends Job {
 }
 
 export type VideoStatus = "processing" | "ready" | "failed";
+/** Sources are mined for clips; assets (B-roll, intros…) are only prepared for editing. */
+export type VideoKind = "source" | "asset";
+
+/** Mirrors the backend `ClipEvent`: a clip's EDL changed (edit, undo/redo, tracking). */
+export interface ClipEvent {
+  clip_id: string;
+  video_id: string;
+  revision: number;
+  actor: string;
+}
 
 export interface Video {
   id: string;
   title: string;
+  kind: VideoKind;
   source_url: string | null;
   status: VideoStatus;
   duration: number | null;

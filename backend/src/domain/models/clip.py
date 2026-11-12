@@ -32,5 +32,17 @@ class Clip(BaseModel):
     start: float
     end: float
     edl: Edl
+    #: Position in the clip's edit history; every applied edit adds one.
+    revision: int = 0
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+class ClipRevision(BaseModel):
+    """One entry of a clip's edit history (the EDL itself is stored with it)."""
+
+    revision: int
+    label: str
+    #: Who made it: "editor", "mcp", "tracking", "analysis", …
+    actor: str
+    created_at: datetime
