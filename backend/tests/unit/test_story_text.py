@@ -1,6 +1,7 @@
 from src.domain.services.story_text import (
     chunk_paragraphs,
     clean_for_speech,
+    clean_title,
     default_caption,
     default_title,
     rewrite_ok,
@@ -56,3 +57,10 @@ def test_default_title_is_the_first_sentence_cut_at_a_word():
     title = default_title(long)
     assert len(title) <= 80 and title.endswith("…") and " wor…" not in title
     assert default_caption("Hi") == "Hi #storytime #fyp"
+
+
+def test_titles_lose_hashtags_emoji_and_quotes():
+    raw = '"Car Trouble at Midnight 🚗 #storytime #roommates #carBorrowing"'
+    assert clean_title(raw) == "Car Trouble at Midnight"
+    assert clean_title("#fyp #viral") == ""
+    assert clean_title("Why C# devs cry") == "Why C# devs cry"

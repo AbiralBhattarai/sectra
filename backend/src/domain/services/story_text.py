@@ -131,5 +131,16 @@ def default_title(text: str) -> str:
     return f"{cut}…"
 
 
+_HASHTAG = re.compile(r"(?:^|\s)#\w+")
+_EMOJI = re.compile("[\U0001f000-\U0001faff☀-➿️]")
+
+
+def clean_title(title: str) -> str:
+    """A title as small models return it, minus hashtags, emoji and wrapping quotes."""
+    title = _EMOJI.sub("", _HASHTAG.sub(" ", title))
+    title = " ".join(title.split()).strip(" \"'“”‘’")
+    return title[:TITLE_MAX_CHARS].rstrip()
+
+
 def default_caption(title: str) -> str:
     return f"{title} #storytime #fyp"

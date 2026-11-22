@@ -21,6 +21,7 @@ from src.domain.services.story_text import (
     TITLE_MAX_CHARS,
     chunk_paragraphs,
     clean_for_speech,
+    clean_title,
     default_caption,
     default_title,
     rewrite_ok,
@@ -122,7 +123,7 @@ class StoryNarrationService:
             try:
                 answer = await self._llm.complete_json(META_SYSTEM, meta_prompt(text), META_SCHEMA)
                 meta = StoryMeta.model_validate(answer)
-                return title or meta.title.strip().strip('"'), meta.caption.strip()
+                return title or clean_title(meta.title), meta.caption.strip()
             except (LLMException, ValidationError) as exc:
                 logger.warning("Story title/caption request failed (attempt %d): %s", attempt, exc)
         return title, ""

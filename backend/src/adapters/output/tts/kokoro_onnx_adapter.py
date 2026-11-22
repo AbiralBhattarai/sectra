@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 import wave
 from collections.abc import Awaitable, Callable
@@ -9,6 +10,9 @@ import numpy as np
 
 from src.domain.exceptions import SpeechSynthesisException
 from src.utils.concurrency import run_blocking
+
+# phonemizer warns "words count mismatch" on most sentences; it's harmless for Kokoro.
+logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
 #: Kokoro's accent comes from the voice prefix: a = American, b = British English.
 _LANGUAGES = {"a": "en-us", "b": "en-gb"}
