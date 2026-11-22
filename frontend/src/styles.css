@@ -367,6 +367,13 @@ button.danger {
   pointer-events: none;
 }
 
+/* Zoom-ins scale the framed picture about the pane's centre (captions sit outside). */
+.frame .zoomer {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+
 /* One pane per stacked source window (two for a split screen). */
 .frame .pane {
   position: relative;
@@ -773,6 +780,47 @@ label.button {
   outline: 1px solid #b197fc;
 }
 
+.zoom-lane {
+  height: 18px;
+}
+
+.zoom-lane span {
+  background: #1f3f5a;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 18px;
+  padding: 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.zoom-lane span.push {
+  background: linear-gradient(90deg, #16222e, #1f3f5a 60%);
+}
+
+.zoom-lane span.selected {
+  outline: 1px solid #74c0fc;
+  overflow: visible;
+}
+
+.zoom-lane .handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: #74c0fc;
+  cursor: ew-resize;
+}
+
+.zoom-lane .handle.start {
+  left: -3px;
+}
+
+.zoom-lane .handle.end {
+  right: -3px;
+}
+
 .shots-lane {
   height: 18px;
 }
@@ -833,6 +881,19 @@ a.button {
   align-items: center;
 }
 
+/* Text posted after the title by the Post button. */
+.post-caption {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
 .track-picker {
   display: flex;
   gap: 6px;
@@ -841,4 +902,109 @@ a.button {
 .track-picker select {
   flex: 1;
   min-width: 0;
+}
+
+.add-url textarea {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  font: inherit;
+}
+
+.caption-field {
+  display: grid;
+  gap: 4px;
+}
+
+.caption-field textarea {
+  resize: vertical;
+  font: inherit;
+}
+
+.sources .error {
+  white-space: pre-line;
+}
+
+/* "What kind of clips?" prompts (Sources, Find clips again). */
+.clip-prompt,
+.refind textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 12px;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.refind {
+  margin-bottom: 12px;
+}
+
+.refind textarea {
+  margin-bottom: 6px;
+}
+
+.refind .hint {
+  margin: 0 0 6px;
+  color: var(--muted, #999);
+  font-size: 12px;
+}
+
+.refind .row {
+  display: flex;
+  gap: 6px;
+}
+
+/* Post status per platform on clip cards. */
+.post-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.post-platforms .hint {
+  font-size: 12px;
+  color: var(--muted, #999);
+}
+
+.chip {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chip.posted {
+  border-color: #2e9d5b;
+  color: #2e9d5b;
+}
+
+.chip.failed {
+  border-color: #d9534f;
+  color: #d9534f;
+}
+
+.chip.blocked {
+  border-color: #d99a2b;
+  color: #d99a2b;
+}
+
+/* Streamer mode: the facecam box, over the gameplay and under the captions. */
+.frame .pip {
+  position: absolute;
+  cursor: move;
+  touch-action: none;
+  outline: 1px dashed rgba(255, 255, 255, 0.35);
+}
+
+.frame .pip:hover {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
 }

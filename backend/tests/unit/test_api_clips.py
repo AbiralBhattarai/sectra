@@ -7,9 +7,11 @@ from src.adapters.output.persistence.postgres_clip_repository import PostgresCli
 from src.adapters.output.persistence.postgres_video_repository import PostgresVideoRepository
 from src.api_main import create_app
 from src.config.settings import Settings
+from src.domain.enums.video_file_enum import VideoFile
 from src.domain.models.video import Video
 from tests.conftest import TEST_DATABASE_URL, TEST_REDIS_URL
 from tests.unit.test_postgres_clip_repository import make_clip
+from tests.unit.transcript_builders import evenly, transcript
 
 
 @pytest.fixture
@@ -108,3 +110,63 @@ async def test_music_and_overlays_round_trip(client, pg_sessionmaker):
 
     edl["music"]["file"] = "../secrets.mp3"
     assert (await client.put(f"/api/clips/{clip.id}", json={"edl": edl})).status_code == 422
+
+
+async def test_caption_and_zooms_round_trip(client, pg_sessionmaker):
+    video = Video(title="talk", duration=120)
+    await PostgresVideoRepository(pg_sessionmaker).add(video)
+    clip = make_clip(video, 30, 80)
+    await PostgresClipRepository(pg_sessionmaker).replace_for_video(video.id, [clip])
+    edl = clip.edl.model_dump(mode="json")
+    edl["zooms"] = [{"start": 30, "end": 32, "scale": 1.2, "ramp": 1}]
+
+    body = {"edl": edl, "caption": " He said WHAT #fyp "}
+    assert (await client.put(f"/api/clips/{clip.id}", json=body)).status_code == 200
+    saved = (await client.get(f"/api/clips/{clip.id}")).json()
+    assert saved["caption"] == "He said WHAT #fyp"
+    assert saved["edl"]["zooms"] == edl["zooms"]
+
+    # Leaving the caption out keeps it.
+    assert (await client.put(f"/api/clips/{clip.id}", json={"edl": edl})).status_code == 200
+    assert (await client.get(f"/api/clips/{clip.id}")).json()["caption"] == "He said WHAT #fyp"
+
+
+async def test_auto_zoom_generates_without_saving(client, pg_sessionmaker, tmp_path):
+    video = Video(title="talk", duration=200)
+    await PostgresVideoRepository(pg_sessionmaker).add(video)
+    clip = make_clip(video, 30, 80)
+    await PostgresClipRepository(pg_sessionmaker).replace_for_video(video.id, [clip])
+    folder = tmp_path / "videos" / str(video.id)
+    folder.mkdir(parents=True)
+    (folder / VideoFile.TRANSCRIPT.value).write_text(transcript(evenly(20)).model_dump_json())
+
+    response = await client.post(
+        f"/api/clips/{clip.id}/auto-zoom", json={"ranges": [{"start": 30, "end": 60}]}
+    )
+
+    assert response.status_code == 200
+    zooms = response.json()
+    assert zooms[0]["start"] == 30 and zooms[0]["ramp"] > 0
+    assert (await client.get(f"/api/clips/{clip.id}")).json()["edl"]["zooms"] == []
+    missing = await client.post(
+        f"/api/clips/{uuid4()}/auto-zoom", json={"ranges": [{"start": 0, "end": 1}]}
+    )
+    assert missing.status_code == 404
+
+
+async def test_post_queues_a_render_and_reports_its_status(client, pg_sessionmaker, redis):
+    video = Video(title="talk", duration=200)
+    await PostgresVideoRepository(pg_sessionmaker).add(video)
+    clip = make_clip(video, 0, 40)
+    await PostgresClipRepository(pg_sessionmaker).replace_for_video(video.id, [clip])
+
+    assert (await client.get(f"/api/clips/{clip.id}/post")).status_code == 204
+    posted = await client.post(f"/api/clips/{clip.id}/post")
+    assert posted.status_code == 202
+    body = posted.json()
+    assert body["platforms"] == ["youtube", "tiktok", "instagram", "x"]
+    assert body["in_outbox"] is False and body["export"]["status"] == "queued"
+    assert len(await redis.xrange("jobs:render")) == 1
+
+    status = (await client.get(f"/api/clips/{clip.id}/post")).json()
+    assert status["export"]["id"] == body["export"]["id"]

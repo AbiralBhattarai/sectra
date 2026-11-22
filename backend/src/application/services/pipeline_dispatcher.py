@@ -22,7 +22,13 @@ StageHandler = Callable[[Job, ProgressCallback], Awaitable[None]]
 
 class PipelineDispatcher:
     """Runs one job: picks the handler for its type, records the outcome, and on
-    success queues the video's next stage."""
+    success queues the video's next stage.
+
+    On a stream in ``inline_streams`` (consumed one job at a time) the next stage also
+    runs right away in the same call, so a video goes through all of that stream's
+    stages before the stream's next message is read. The next stage is still queued
+    first, so a crash mid-chain resumes from it; when its message arrives after the
+    inline run, the job is already terminal and is skipped."""
 
     def __init__(
         self,
@@ -32,6 +38,7 @@ class PipelineDispatcher:
         progress: ProgressPort,
         handlers: Mapping[JobType, StageHandler],
         max_attempts: int,
+        inline_streams: frozenset[str] = frozenset(),
     ) -> None:
         self._jobs = jobs
         self._videos = videos
@@ -39,20 +46,28 @@ class PipelineDispatcher:
         self._progress = progress
         self._handlers = handlers
         self._max_attempts = max_attempts
+        self._inline_streams = inline_streams
 
     async def run_job(self, job_id: UUID) -> None:
+        next_id: UUID | None = job_id
+        while next_id is not None:
+            next_id = await self._run_one(next_id)
+
+    async def _run_one(self, job_id: UUID) -> UUID | None:
+        """Runs the job; returns the next stage's job id when it should run inline."""
         job = await self._jobs.get(job_id)
         if job is None:
             logger.warning("Skipping unknown job %s", job_id)
-            return
+            return None
         if job.status.is_terminal:
-            # Redelivery of a job that already finished (crash between save and ack).
-            return
+            # Redelivery of a job that already finished (crash between save and ack, or
+            # the message of a stage that already ran inline).
+            return None
 
         job.attempts += 1
         if job.attempts > self._max_attempts:
             await self._fail(job, f"Gave up after {self._max_attempts} attempts")
-            return
+            return None
 
         job.status = JobStatus.RUNNING
         job.error = None
@@ -67,18 +82,23 @@ class PipelineDispatcher:
         except Exception as exc:
             logger.exception("Job %s (%s) failed", job.id, job.type)
             await self._fail(job, str(exc) or type(exc).__name__)
-            return
+            return None
 
         # Advance the video before announcing success, so a UI refetch on the
         # event already sees the new state.
+        inline: UUID | None = None
         if job.video_id:
             if next_stage := job.type.next_stage:
-                await self._scheduler.submit(Job(type=next_stage, video_id=job.video_id))
+                next_job = Job(type=next_stage, video_id=job.video_id)
+                await self._scheduler.submit(next_job)
+                if next_stage.stream == job.type.stream and job.type.stream in self._inline_streams:
+                    inline = next_job.id
             else:
                 await self._set_video_status(job.video_id, VideoStatus.READY)
         job.status = JobStatus.SUCCEEDED
         job.progress = 1.0
         await self._update(job)
+        return inline
 
     async def _fail(self, job: Job, error: str) -> None:
         if job.video_id:

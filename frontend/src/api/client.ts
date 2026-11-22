@@ -1,5 +1,5 @@
-import type { ClipDetail, Edl, MusicTrack, Tracking } from "../editor/types";
-import type { Clip, Export, Job, Video, VideoFile } from "./types";
+import type { ClipDetail, Edl, MusicTrack, Span, Tracking, Zoom } from "../editor/types";
+import type { Clip, Export, Job, PostStatus, Video, VideoFile } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -21,22 +21,31 @@ export const listVideos = () => request<Video[]>("/api/videos");
 
 export const getVideo = (id: string) => request<Video>(`/api/videos/${id}`);
 
-export const addVideoUrl = (url: string) =>
+export const addVideoUrl = (url: string, clipPrompt = "") =>
   request<Video>("/api/videos", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, clip_prompt: clipPrompt }),
   });
 
 export const listClips = (videoId: string) => request<Clip[]>(`/api/videos/${videoId}/clips`);
 
 export const getClip = (id: string) => request<ClipDetail>(`/api/clips/${id}`);
 
-export const updateClip = (id: string, edl: Edl) =>
+/** Saves the edit; `caption` is left unchanged when omitted. */
+export const updateClip = (id: string, edl: Edl, caption?: string) =>
   request<ClipDetail>(`/api/clips/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ edl }),
+    body: JSON.stringify(caption === undefined ? { edl } : { edl, caption }),
+  });
+
+/** Generated zoom-ins for the clip cut to `ranges` (not saved). */
+export const autoZoom = (clipId: string, ranges: Span[]) =>
+  request<Zoom[]>(`/api/clips/${clipId}/auto-zoom`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ranges }),
   });
 
 export const getMediaJson = <T>(videoId: string, file: VideoFile) => request<T>(mediaUrl(videoId, file));
@@ -51,10 +60,15 @@ export const mediaUrl = (videoId: string, file: VideoFile) =>
   `/api/videos/${videoId}/media/${file}`;
 
 /** Streams the file as the raw request body. XHR because fetch can't report upload progress. */
-export function uploadVideo(file: File, onProgress: (fraction: number) => void): Promise<Video> {
+export function uploadVideo(
+  file: File,
+  onProgress: (fraction: number) => void,
+  clipPrompt = "",
+): Promise<Video> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/videos/upload?filename=${encodeURIComponent(file.name)}`);
+    const query = new URLSearchParams({ filename: file.name, clip_prompt: clipPrompt });
+    xhr.open("POST", `/api/videos/upload?${query}`);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     };
@@ -83,11 +97,28 @@ export const listExports = (clipId: string) => request<Export[]>(`/api/clips/${c
 export const requestExport = (clipId: string) =>
   request<Export>(`/api/clips/${clipId}/exports`, { method: "POST" });
 
+/** Render the clip into the outbox and have the host poster post it everywhere, with the
+ * title followed by `postCaption` (saved on the clip) as the description. */
+export const postClip = (clipId: string, postCaption: string) =>
+  request<PostStatus>(`/api/clips/${clipId}/post`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ post_caption: postCaption }),
+  });
+
+/** The clip's latest Post, or undefined if it was never posted. */
+export const getPostStatus = (clipId: string) => request<PostStatus | undefined>(`/api/clips/${clipId}/post`);
+
 /** A face-tracking job covering the clip's ranges (an existing one when it can). */
 export const requestTracking = (clipId: string) =>
   request<Job>(`/api/clips/${clipId}/tracking`, { method: "POST" });
 
 export const getTracking = (jobId: string) => request<Tracking>(`/api/tracking/${jobId}`);
 
-export const findClipsAgain = (videoId: string) =>
-  request<unknown>(`/api/videos/${videoId}/analyze`, { method: "POST" });
+/** Re-runs clip finding; `clipPrompt` replaces the stored one ("" = default finder). */
+export const findClipsAgain = (videoId: string, clipPrompt?: string) =>
+  request<unknown>(`/api/videos/${videoId}/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(clipPrompt === undefined ? {} : { clip_prompt: clipPrompt }),
+  });

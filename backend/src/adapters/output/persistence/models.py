@@ -21,6 +21,7 @@ class VideoRow(Base):
     duration: Mapped[float | None] = mapped_column(Float)
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
+    clip_prompt: Mapped[str] = mapped_column(Text, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -52,6 +53,8 @@ class ClipRow(Base):
     hook: Mapped[str] = mapped_column(Text)
     score: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(Text)
+    caption: Mapped[str] = mapped_column(Text, server_default="")
+    post_caption: Mapped[str] = mapped_column(Text, server_default="")
     start: Mapped[float] = mapped_column(Float)
     end: Mapped[float] = mapped_column(Float)
     edl: Mapped[dict[str, Any]] = mapped_column(JSONB)

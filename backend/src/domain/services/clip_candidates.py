@@ -15,7 +15,10 @@ def select_clips(
     min_seconds: float,
     max_seconds: float,
     max_count: int,
+    max_overlap: float = DUPLICATE_IOU,
 ) -> list[tuple[ClipCandidate, TimeSpan]]:
+    """Fitted candidates, best first until ``max_count``, then sorted by start. A
+    candidate overlapping a better one by more than ``max_overlap`` (IoU) is dropped."""
     by_id = {segment.id: index for index, segment in enumerate(segments)}
     fitted: list[tuple[ClipCandidate, TimeSpan]] = []
     for candidate in candidates:
@@ -29,7 +32,7 @@ def select_clips(
 
     kept: list[tuple[ClipCandidate, TimeSpan]] = []
     for candidate, span in sorted(fitted, key=lambda item: item[0].score, reverse=True):
-        if all(_iou(span, other) <= DUPLICATE_IOU for _, other in kept):
+        if all(_iou(span, other) <= max_overlap for _, other in kept):
             kept.append((candidate, span))
         if len(kept) == max_count:
             break

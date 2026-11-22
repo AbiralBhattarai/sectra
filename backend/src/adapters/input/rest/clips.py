@@ -4,7 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from src.adapters.input.rest.dependencies import get_clip_editing
-from src.application.dto.clip import ClipDetailDTO, ClipDTO, UpdateClipRequest
+from src.application.dto.clip import AutoZoomRequest, ClipDetailDTO, ClipDTO, UpdateClipRequest
+from src.domain.models.edl import Zoom
 from src.ports.input.clip_editing_port import ClipEditingPort
 
 router = APIRouter(prefix="/api", tags=["clips"])
@@ -24,4 +25,10 @@ async def get_clip(clip_id: UUID, clips: Clips) -> ClipDetailDTO:
 
 @router.put("/clips/{clip_id}")
 async def update_clip(clip_id: UUID, body: UpdateClipRequest, clips: Clips) -> ClipDetailDTO:
-    return ClipDetailDTO.from_domain(await clips.update_edl(clip_id, body.edl))
+    return ClipDetailDTO.from_domain(await clips.update_edl(clip_id, body.edl, body.caption))
+
+
+@router.post("/clips/{clip_id}/auto-zoom")
+async def auto_zoom(clip_id: UUID, body: AutoZoomRequest, clips: Clips) -> list[Zoom]:
+    """Generated zoom-ins for the given cut; the editor applies them (not saved here)."""
+    return await clips.auto_zoom(clip_id, body.ranges)

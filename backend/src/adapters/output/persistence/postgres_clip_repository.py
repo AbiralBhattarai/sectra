@@ -55,6 +55,8 @@ def _to_domain(row: ClipRow) -> Clip:
         hook=row.hook,
         score=row.score,
         reason=row.reason,
+        caption=row.caption,
+        post_caption=row.post_caption,
         start=row.start,
         end=row.end,
         edl=Edl.model_validate(row.edl),

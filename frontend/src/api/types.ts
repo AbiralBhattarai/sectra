@@ -30,6 +30,16 @@ export interface Job {
   error: string | null;
 }
 
+/** The latest Post of a clip: its render, then per platform what the host poster did. */
+export interface PostStatus {
+  export: Export;
+  platforms: string[];
+  in_outbox: boolean;
+  posted: Record<string, { at: string; url: string | null }>;
+  failures: Record<string, { count: number; error?: string; gave_up?: boolean }>;
+  blocked: Record<string, { at: string; reason: string }>;
+}
+
 /** An export job plus download links once it succeeded. */
 export interface Export extends Job {
   clip_id: string | null;
@@ -48,6 +58,8 @@ export interface Video {
   duration: number | null;
   width: number | null;
   height: number | null;
+  /** What kind of clips the user asked for; "" = the default clip finder. */
+  clip_prompt: string;
   created_at: string;
   current_job: Job | null;
 }
@@ -66,6 +78,10 @@ export interface Clip {
   hook: string;
   score: number;
   reason: string;
+  /** Ready-to-post social caption with hashtags. */
+  caption: string;
+  /** The user's text posted after the title by the Post button (e.g. "#lacy"). */
+  post_caption: string;
   /** Source span in seconds. */
   start: number;
   end: number;

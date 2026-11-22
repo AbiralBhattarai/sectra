@@ -70,6 +70,27 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
     llm = _build_llm(settings, closers)
 
     preparation = MediaPreparationService(videos=core.videos, storage=core.storage, media=media)
+    exporter = ClipExportService(
+        clips=core.clips,
+        videos=core.videos,
+        jobs=core.jobs,
+        storage=core.storage,
+        scheduler=core.scheduler,
+        renderer=renderer,
+        post_platforms=settings.post_platform_list,
+    )
+    tracking = ClipTrackingService(
+        clips=core.clips,
+        videos=core.videos,
+        jobs=core.jobs,
+        storage=core.storage,
+        scheduler=core.scheduler,
+        tracker=face_tracker,
+        min_shot_seconds=settings.track_min_shot_seconds,
+        exports=exporter,
+    )
+    auto_export = settings.auto_export or settings.auto_track
+    analysis_stream = JobType.ANALYZE.stream
     dispatcher = PipelineDispatcher(
         jobs=core.jobs,
         videos=core.videos,
@@ -95,30 +116,28 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
                 max_seconds=settings.clip_max_seconds,
                 max_count=settings.clip_max_count,
                 window_seconds=settings.llm_window_seconds,
+                clips_per_window=settings.llm_clips_per_window,
+                max_overlap=settings.clip_max_overlap,
+                auto_zoom=settings.auto_zoom,
+                tracking=tracking if settings.auto_track else None,
+                exports=exporter if auto_export else None,
             ),
-            JobType.EXPORT: ClipExportService(
-                clips=core.clips,
-                videos=core.videos,
-                jobs=core.jobs,
-                storage=core.storage,
-                scheduler=core.scheduler,
-                renderer=renderer,
-            ),
-            JobType.TRACK: ClipTrackingService(
-                clips=core.clips,
-                videos=core.videos,
-                jobs=core.jobs,
-                storage=core.storage,
-                scheduler=core.scheduler,
-                tracker=face_tracker,
-                min_shot_seconds=settings.track_min_shot_seconds,
-            ),
+            JobType.EXPORT: exporter,
+            JobType.TRACK: tracking,
         },
         max_attempts=settings.job_max_attempts,
+        # One video at a time through the analysis stages; only safe with one consumer slot.
+        inline_streams=frozenset({analysis_stream} if settings.analysis_concurrency == 1 else ()),
     )
     consumers = {
         stream: RedisStreamConsumer(
-            core.redis, consumer_name=settings.worker_name, concurrency=settings.job_concurrency
+            core.redis,
+            consumer_name=settings.worker_name,
+            concurrency=(
+                settings.analysis_concurrency
+                if stream == analysis_stream
+                else settings.job_concurrency
+            ),
         )
         for stream in {job_type.stream for job_type in JobType}
     }
@@ -145,7 +164,14 @@ def _build_stt(
         )
         closers.append(client.close)
         return OpenAICompatSTTAdapter(client, settings.stt_model, semaphore, executor)
-    return FasterWhisperAdapter(settings.stt_model, settings.stt_concurrency, semaphore, executor)
+    return FasterWhisperAdapter(
+        settings.stt_model,
+        settings.stt_concurrency,
+        semaphore,
+        executor,
+        device=settings.stt_device,
+        compute_type=settings.stt_compute_type,
+    )
 
 
 def _build_llm(settings: Settings, closers: list[Callable[[], Awaitable[None]]]) -> LLMPort:

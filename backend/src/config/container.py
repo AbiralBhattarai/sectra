@@ -48,13 +48,23 @@ class Container:
 def build_container(settings: Settings) -> Container:
     engine = create_engine(settings.database_url)
     sessionmaker = create_sessionmaker(engine)
-    redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    # No client-side read timeout: stream consumers block on XREADGROUP, and the library
+    # default (5 s) killed the worker whenever the loop was briefly busy.
+    redis = Redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_timeout=None,
+        socket_connect_timeout=10,
+        health_check_interval=30,
+    )
     executor = ThreadPoolExecutor(settings.blocking_threads, thread_name_prefix="blocking")
 
     jobs = PostgresJobRepository(sessionmaker)
     videos = PostgresVideoRepository(sessionmaker)
     clips = PostgresClipRepository(sessionmaker)
-    storage = LocalFsStorageAdapter(settings.data_dir, executor, settings.default_music_dir)
+    storage = LocalFsStorageAdapter(
+        settings.data_dir, executor, settings.default_music_dir, settings.outbox_dir
+    )
     progress = RedisPubSubProgressAdapter(redis)
     scheduler = JobScheduler(jobs=jobs, queue=RedisStreamQueueAdapter(redis), progress=progress)
 
@@ -82,7 +92,12 @@ def build_container(settings: Settings) -> Container:
             storage=storage, defaults=load_default_tracks(settings.default_music_dir)
         ),
         clip_export=ClipExportService(
-            clips=clips, videos=videos, jobs=jobs, storage=storage, scheduler=scheduler
+            clips=clips,
+            videos=videos,
+            jobs=jobs,
+            storage=storage,
+            scheduler=scheduler,
+            post_platforms=settings.post_platform_list,
         ),
         clip_tracking=ClipTrackingService(
             clips=clips, videos=videos, jobs=jobs, storage=storage, scheduler=scheduler

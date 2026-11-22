@@ -34,6 +34,7 @@ function edl(ranges: [number, number][]): Edl {
     },
     overlays: [],
     music: null,
+    zooms: [],
   };
 }
 

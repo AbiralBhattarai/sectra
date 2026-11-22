@@ -1,7 +1,7 @@
 import pytest
 
 from src.domain.exceptions import AppValidationException
-from src.domain.models.edl import Captions, Edl, Overlay, Shot, Tracking
+from src.domain.models.edl import Captions, Edl, Overlay, Shot, Tracking, Zoom
 from src.domain.models.speech import TimeSpan
 from src.domain.services.edl_rules import edl_bounds, validate_edl
 
@@ -61,3 +61,22 @@ def test_bad_shots_are_rejected(starts, message):
     )
     with pytest.raises(AppValidationException, match=message):
         validate_edl(tracked, source_duration=30)
+
+
+@pytest.mark.parametrize(
+    ("zooms", "message"),
+    [
+        (((2, 2.05),), "Zoom 1 ends before it starts"),
+        (((2, 5), (4, 6)), "Zoom 2 overlaps"),
+        (((6, 8), (2, 4)), "Zoom 2 overlaps or precedes"),
+    ],
+)
+def test_bad_zooms_are_rejected(zooms, message):
+    bad = edl((1, 9)).model_copy(update={"zooms": [Zoom(start=a, end=b) for a, b in zooms]})
+    with pytest.raises(AppValidationException, match=message):
+        validate_edl(bad, source_duration=30)
+
+
+def test_touching_zooms_are_fine():
+    ok = edl((1, 9)).model_copy(update={"zooms": [Zoom(start=1, end=3), Zoom(start=3, end=4)]})
+    validate_edl(ok, source_duration=30)

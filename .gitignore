@@ -13,3 +13,6 @@ backend/models/
 assets/music/*.mp3
 assets/music/*.part
 whisper-server/.venv/
+
+# Machine-specific compose settings (e.g. a copy of docker-compose.gpu.yaml)
+docker-compose.override.yaml

@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate test lint models music whisper
+.PHONY: up down logs migrate test lint models music whisper poster poster-schedule
 
 up:
 	docker compose up -d --build
@@ -36,3 +36,12 @@ music:
 # host.docker.internal:9000 when STT_PROVIDER=openai_compat (see .env.example).
 whisper:
 	cd whisper-server && uv run uvicorn app:app --host 127.0.0.1 --port 9000
+
+# Posts clips sent with the clip card's Post button right away (host, real Chrome). Log in
+# once per platform first: cd poster && uv run poster login <youtube|tiktok|instagram|x>
+poster:
+	cd poster && uv run poster serve
+
+# Posts the automatic outbox (AUTO_EXPORT) on a schedule instead.
+poster-schedule:
+	cd poster && uv run poster run

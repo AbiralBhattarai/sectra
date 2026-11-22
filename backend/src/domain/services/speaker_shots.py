@@ -35,7 +35,9 @@ def build_shots(
     shots = []
     for face, start, end in runs:
         x, y = _median_centre(by_id[face], start, end)
-        shots.append(Shot(start=round(span.start + start / fps, 3), face=face, x=x, y=y))
+        # The first shot must start exactly at the span (the EDL rules check it).
+        at = span.start if not shots else round(span.start + start / fps, 3)
+        shots.append(Shot(start=at, face=face, x=x, y=y))
     return shots
 
 

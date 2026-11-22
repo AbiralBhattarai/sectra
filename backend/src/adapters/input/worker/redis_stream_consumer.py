@@ -1,14 +1,20 @@
 import asyncio
+import contextlib
 import logging
 
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import ResponseError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from src.ports.input.job_consumer_port import MessageHandler
 
 logger = logging.getLogger(__name__)
 
 GROUP = "workers"
+#: Waits between reconnect attempts after a failed read (doubling, capped).
+_BACKOFF_START = 1.0
+_BACKOFF_MAX = 30.0
 
 
 class RedisStreamConsumer:
@@ -34,6 +40,7 @@ class RedisStreamConsumer:
     async def consume(self, stream: str, handler: MessageHandler) -> None:
         await self._ensure_group(stream)
         await self._replay_pending(stream, handler)
+        backoff = _BACKOFF_START
         while not self._stopping.is_set():
             await self._slots.acquire()
             if self._stopping.is_set():
@@ -43,9 +50,17 @@ class RedisStreamConsumer:
                 response = await self._redis.xreadgroup(
                     GROUP, self._consumer, {stream: ">"}, count=1, block=self._block_ms
                 )
+            except (RedisTimeoutError, RedisConnectionError) as exc:
+                # A blip (Redis restart, a stalled loop) must not take the worker down.
+                self._slots.release()
+                logger.warning("Reading %s failed (%s); retrying in %.0fs", stream, exc, backoff)
+                await self._sleep(backoff)
+                backoff = min(backoff * 2, _BACKOFF_MAX)
+                continue
             except BaseException:
                 self._slots.release()
                 raise
+            backoff = _BACKOFF_START
             messages = response[0][1] if response else []
             if not messages or self._stopping.is_set():
                 # A message read while stopping stays pending and is replayed on restart.
@@ -53,6 +68,11 @@ class RedisStreamConsumer:
                 continue
             msg_id, fields = messages[0]
             self._spawn(stream, msg_id, fields, handler)
+
+    async def _sleep(self, seconds: float) -> None:
+        """Sleep, but wake up early when stopping."""
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self._stopping.wait(), timeout=seconds)
 
     async def stop(self) -> None:
         self._stopping.set()

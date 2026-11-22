@@ -1,0 +1,7 @@
+# NVIDIA GPU for faster-whisper (Windows/Linux; Docker on macOS has no GPU).
+# Enable it: copy this file to docker-compose.override.yaml, set STT_DEVICE=cuda in .env.
+services:
+  worker:
+    build:
+      args: { GPU: "1" }
+    gpus: all

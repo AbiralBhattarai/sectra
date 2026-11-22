@@ -101,3 +101,36 @@ async def test_runs_at_most_concurrency_handlers_at_once(redis):
     await task
 
     assert peak == 2
+
+
+async def test_survives_a_read_timeout(redis, monkeypatch):
+    """A timed-out XREADGROUP (Redis blip, busy loop) is retried, not fatal."""
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+
+    from src.adapters.input.worker import redis_stream_consumer
+
+    monkeypatch.setattr(redis_stream_consumer, "_BACKOFF_START", 0.01)
+    real = redis.xreadgroup
+    failures = 0
+
+    async def flaky(*args, **kwargs):
+        nonlocal failures
+        if ">" in args[2].values() and failures < 2:
+            failures += 1
+            raise RedisTimeoutError("Timeout reading from redis")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(redis, "xreadgroup", flaky)
+    seen = []
+
+    async def handler(fields):
+        seen.append(fields["job_id"])
+
+    c = consumer(redis)
+    task = asyncio.create_task(c.consume(STREAM, handler))
+    await redis.xadd(STREAM, {"job_id": "a"})
+    await wait_until(lambda: seen == ["a"])
+    await c.stop()
+    await task
+
+    assert failures == 2

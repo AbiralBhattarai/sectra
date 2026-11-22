@@ -19,6 +19,8 @@ class ClipCandidate(BaseModel):
     hook: str
     score: int = Field(ge=0, le=100)
     reason: str
+    #: Ready-to-post social caption with hashtags.
+    caption: str = ""
 
 
 class Clip(BaseModel):
@@ -28,6 +30,10 @@ class Clip(BaseModel):
     hook: str
     score: int
     reason: str
+    caption: str = ""
+    #: The user's text added after the title when the clip is posted with the Post button
+    #: (e.g. "#lacy"): the posted description is ``post_description(title, post_caption)``.
+    post_caption: str = ""
     #: Where the clip came from in the source; the EDL holds the edited version.
     start: float
     end: float

@@ -8,9 +8,13 @@ from src.domain.models.job import Job
 
 
 class ClipTrackingPort(Protocol):
-    async def request_tracking(self, clip_id: UUID) -> Job:
+    async def request_tracking(self, clip_id: UUID, auto_rank: int | None = None) -> Job:
         """A TRACK job covering the clip's current ranges: an existing queued, running or
-        finished one when it covers them, else a newly queued one."""
+        finished one when it covers them, else a newly queued one.
+
+        ``auto_rank`` (the automatic edit after analysis) always queues a new job whose
+        worker applies the shots to the clip itself and then exports it to the outbox
+        at that rank, with a centre crop if tracking fails."""
         ...
 
     async def tracking_result(self, job_id: UUID) -> Tracking:

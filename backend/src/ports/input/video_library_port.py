@@ -11,11 +11,13 @@ from src.domain.models.video import Video
 
 
 class VideoLibraryPort(Protocol):
-    async def add_from_url(self, url: str) -> Video:
+    async def add_from_url(self, url: str, clip_prompt: str = "") -> Video:
         """Register the video and queue its download."""
         ...
 
-    async def add_upload(self, filename: str, chunks: AsyncIterator[bytes]) -> Video:
+    async def add_upload(
+        self, filename: str, chunks: AsyncIterator[bytes], clip_prompt: str = ""
+    ) -> Video:
         """Store the uploaded file and queue its processing. Raises
         ``AppValidationException`` for unsupported file types."""
         ...
@@ -28,9 +30,9 @@ class VideoLibraryPort(Protocol):
 
     async def delete(self, video_id: UUID) -> None: ...
 
-    async def find_clips_again(self, video_id: UUID) -> Job:
+    async def find_clips_again(self, video_id: UUID, clip_prompt: str | None = None) -> Job:
         """Re-run clip analysis on a processed video, replacing its clips (and their
-        edits). Raises ``AppValidationException`` if it hasn't been transcribed."""
+        edits). A ``clip_prompt`` replaces the stored one (None keeps it). Raises ``AppValidationException`` if it hasn't been transcribed."""
         ...
 
     async def media_path(self, video_id: UUID, file: VideoFile) -> Path:

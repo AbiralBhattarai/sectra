@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from src.domain.enums.video_file_enum import VideoFile
@@ -41,6 +41,26 @@ class FileStoragePort(Protocol):
     def tracking_path(self, video_id: UUID, job_id: UUID) -> Path:
         """Where a TRACK job's shots (JSON) go, inside the video's directory. The
         directory is created if missing."""
+        ...
+
+    async def write_outbox(
+        self,
+        video_id: UUID,
+        video_title: str,
+        rank: int,
+        caption: str,
+        video: Path,
+        sidecar: dict[str, Any],
+    ) -> Path:
+        """Copy a finished clip into the outbox folder of its video as
+        ``<rank> <caption>.mp4``, then write ``sidecar`` next to it as JSON with the
+        same name. Both appear atomically, the JSON last, so a reader that waits for the
+        JSON never sees a half-copied video. Returns the video's new path."""
+        ...
+
+    async def read_outbox_sidecar(self, video_id: UUID, export_id: UUID) -> dict[str, Any] | None:
+        """The outbox sidecar written for ``export_id`` (with whatever the poster has
+        recorded in it since), or None if there is none."""
         ...
 
     async def save_music(self, name: str, chunks: AsyncIterator[bytes]) -> str:

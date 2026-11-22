@@ -34,6 +34,26 @@ class CropMove(BaseModel):
     y: int
 
 
+class ZoomCue(BaseModel):
+    """A zoom on the output timeline (see ``Edl.zooms``)."""
+
+    start: float
+    end: float
+    scale: float
+    ramp: float
+
+
+class PipBox(BaseModel):
+    """Streamer mode: ``source`` (a source window) drawn at ``x, y`` (output pixels)
+    scaled to ``width x height``, over the main picture and under the captions."""
+
+    source: CropBox
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class RenderPlan(BaseModel):
     """Everything the renderer needs, already resolved to output time and pixels."""
 
@@ -42,6 +62,10 @@ class RenderPlan(BaseModel):
     crops: list[CropBox]
     #: Face tracking: where the (single) crop jumps; empty when it never moves.
     crop_moves: list[CropMove] = []
+    #: Zoom-ins over the framed picture, output time; empty for a split screen.
+    zooms: list[ZoomCue] = []
+    #: Streamer mode's facecam box (then ``crops`` holds just the gameplay window).
+    pip: PipBox | None = None
     width: int
     height: int
     duration: float

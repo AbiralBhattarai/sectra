@@ -15,6 +15,16 @@ class Crop(BaseModel):
     scale: float = Field(default=1.0, ge=1)
 
 
+class Facecam(BaseModel):
+    """Streamer mode: the source region shown in a picture-in-picture box at the bottom
+    right of the frame (the streamer's face cam) while the main frame shows gameplay.
+    Centre as fractions of the source frame, plus zoom (the box's aspect is fixed)."""
+
+    x: float = Field(default=0.85, ge=0, le=1)
+    y: float = Field(default=0.85, ge=0, le=1)
+    scale: float = Field(default=3.0, ge=1, le=8)
+
+
 class Captions(BaseModel):
     #: Word timings on the source timeline; remapped to output time at render.
     words: list[Word]
@@ -62,6 +72,18 @@ class Tracking(BaseModel):
     shots: list[Shot]
 
 
+class Zoom(BaseModel):
+    """A zoom-in on top of the framing, centred on the crop (so on the tracked face).
+    Times are on the source timeline, like captions and shots."""
+
+    start: float = Field(ge=0)
+    end: float
+    #: Magnification relative to the framed picture.
+    scale: float = Field(default=1.15, ge=1, le=2)
+    #: Seconds to ease in from 1x; 0 is a hard punch-in.
+    ramp: float = Field(default=0, ge=0)
+
+
 class Edl(BaseModel):
     """Edit decision list: everything needed to preview or render one clip."""
 
@@ -76,6 +98,10 @@ class Edl(BaseModel):
     captions: Captions
     overlays: list[Overlay] = Field(default_factory=list)
     music: Music | None = None
+    #: Sorted, non-overlapping; ignored with ``split_screen``.
+    zooms: list[Zoom] = Field(default_factory=list)
+    #: Streamer mode; when set, split screen and face tracking are ignored.
+    facecam: Facecam | None = None
 
     @classmethod
     def for_span(cls, span: TimeSpan, words: list[Word]) -> "Edl":

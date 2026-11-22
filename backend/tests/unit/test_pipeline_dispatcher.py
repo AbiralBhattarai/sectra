@@ -125,3 +125,77 @@ async def test_unknown_job_is_ignored(fakes):
     job = Job(type=JobType.PING)
     await dispatcher(fakes, {JobType.PING: PingService(step_delay=0)}).run_job(job.id)
     assert fakes.progress.events == []
+
+
+def chaining(fakes, handlers):
+    return PipelineDispatcher(
+        jobs=fakes.jobs,
+        videos=fakes.videos,
+        scheduler=fakes.scheduler,
+        progress=fakes.progress,
+        handlers=handlers,
+        max_attempts=3,
+        inline_streams=frozenset({JobType.ANALYZE.stream}),
+    )
+
+
+async def test_inline_stream_runs_every_stage_of_the_video_in_one_call(fakes):
+    ran = []
+
+    async def record(job, report):
+        ran.append(job.type)
+
+    stages = [JobType.NORMALIZE, JobType.PREPARE, JobType.VAD, JobType.TRANSCRIBE, JobType.ANALYZE]
+    video = Video(title="talk")
+    await fakes.videos.add(video)
+    job = Job(type=JobType.NORMALIZE, video_id=video.id)
+    await fakes.jobs.add(job)
+
+    await chaining(fakes, dict.fromkeys(stages, record)).run_job(job.id)
+
+    assert ran == stages
+    assert fakes.videos.videos[video.id].status is VideoStatus.READY
+    # Each next stage was still queued (crash recovery); its late message is a no-op.
+    assert [q.type for q in fakes.queue.enqueued] == stages[1:]
+    for queued in fakes.queue.enqueued:
+        assert fakes.jobs.jobs[queued.id].status is JobStatus.SUCCEEDED
+        await chaining(fakes, dict.fromkeys(stages, record)).run_job(queued.id)
+    assert ran == stages
+
+
+async def test_inline_chain_stops_at_a_failed_stage(fakes):
+    async def boom(job, report):
+        raise RuntimeError("no speech")
+
+    video = Video(title="talk")
+    await fakes.videos.add(video)
+    job = Job(type=JobType.PREPARE, video_id=video.id)
+    await fakes.jobs.add(job)
+
+    await chaining(fakes, {JobType.PREPARE: noop, JobType.VAD: boom}).run_job(job.id)
+
+    [vad] = fakes.queue.enqueued
+    assert fakes.jobs.jobs[vad.id].status is JobStatus.FAILED
+    assert fakes.videos.videos[video.id].status is VideoStatus.FAILED
+
+
+async def test_download_hands_the_video_to_the_analysis_queue_without_running_it(fakes):
+    video = Video(title="talk")
+    await fakes.videos.add(video)
+    job = Job(type=JobType.INGEST, video_id=video.id)
+    await fakes.jobs.add(job)
+
+    async def unexpected(job, report):
+        raise AssertionError("ran inline")
+
+    await chaining(fakes, {JobType.INGEST: noop, JobType.NORMALIZE: unexpected}).run_job(job.id)
+
+    [queued] = fakes.queue.enqueued
+    assert fakes.jobs.jobs[queued.id].status is JobStatus.QUEUED
+
+
+def test_downloads_have_their_own_stream():
+    assert JobType.INGEST.stream != JobType.NORMALIZE.stream
+    assert {JobType[s].stream for s in ("NORMALIZE", "PREPARE", "VAD", "TRANSCRIBE")} == {
+        JobType.ANALYZE.stream
+    }
