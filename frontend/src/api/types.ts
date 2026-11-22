@@ -8,7 +8,10 @@ export type JobType =
   | "transcribe"
   | "analyze"
   | "export"
-  | "track";
+  | "track"
+  | "narrate"
+  | "compose"
+  | "background";
 
 /** Mirrors the backend `JobEvent` pushed over /api/events. */
 export interface JobEvent {
@@ -60,8 +63,59 @@ export interface Video {
   height: number | null;
   /** What kind of clips the user asked for; "" = the default clip finder. */
   clip_prompt: string;
+  /** "source" = Clipper (a long video to clip); "story" = Narrator. */
+  kind: VideoKind;
+  story: StorySpec | null;
   created_at: string;
   current_job: Job | null;
+}
+
+export type VideoKind = "source" | "story";
+export type BackgroundMode = "black" | "gameplay";
+
+/** Mirrors the backend `StorySpec`: what was asked for, plus what narration resolved. */
+export interface StorySpec {
+  text: string;
+  title: string;
+  polish: boolean;
+  voice: string;
+  speed: number;
+  background_mode: BackgroundMode;
+  /** A specific library clip, "<category>/<file>"; null = random. */
+  background: string | null;
+  category: string | null;
+  character: string | null;
+  narration: string;
+  caption: string;
+}
+
+export type NewStory = Omit<StorySpec, "narration" | "caption">;
+
+export interface StoryOptions {
+  voices: { id: string; label: string }[];
+  characters: { id: string; label: string; voice: string }[];
+}
+
+export interface Background {
+  category: string;
+  file: string;
+  name: string;
+  /** What a story's `background` takes. */
+  ref: string;
+}
+
+export interface PendingBackground {
+  job_id: string;
+  category: string;
+  source: string;
+  status: JobStatus;
+  progress: number;
+  error: string | null;
+}
+
+export interface BackgroundLibrary {
+  ready: Background[];
+  pending: PendingBackground[];
 }
 
 export type VideoFile =
@@ -69,7 +123,8 @@ export type VideoFile =
   | "peaks.json"
   | "thumbnail.jpg"
   | "speech.json"
-  | "transcript.json";
+  | "transcript.json"
+  | "lipsync.json";
 
 export interface Clip {
   id: string;

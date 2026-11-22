@@ -4,7 +4,9 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.adapters.output.persistence.models import VideoRow
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.enums.video_status_enum import VideoStatus
+from src.domain.models.story import StorySpec
 from src.domain.models.video import Video
 
 
@@ -14,7 +16,7 @@ class PostgresVideoRepository:
 
     async def add(self, video: Video) -> None:
         async with self._sessionmaker.begin() as session:
-            session.add(VideoRow(**video.model_dump(mode="python")))
+            session.add(VideoRow(**_to_row_values(video), id=video.id, created_at=video.created_at))
 
     async def get(self, video_id: UUID) -> Video | None:
         async with self._sessionmaker() as session:
@@ -29,9 +31,7 @@ class PostgresVideoRepository:
     async def save(self, video: Video) -> None:
         async with self._sessionmaker.begin() as session:
             await session.execute(
-                update(VideoRow)
-                .where(VideoRow.id == video.id)
-                .values(**video.model_dump(exclude={"id", "created_at"}))
+                update(VideoRow).where(VideoRow.id == video.id).values(**_to_row_values(video))
             )
 
     async def delete(self, video_id: UUID) -> None:
@@ -49,6 +49,15 @@ def _to_domain(row: VideoRow) -> Video:
         width=row.width,
         height=row.height,
         clip_prompt=row.clip_prompt or "",
+        kind=VideoKind(row.kind or VideoKind.SOURCE),
+        story=StorySpec.model_validate(row.story) if row.story else None,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _to_row_values(video: Video) -> dict:
+    """Every mutable column; ``story`` goes in as JSON."""
+    values = video.model_dump(exclude={"id", "created_at", "story"})
+    values["story"] = video.story.model_dump(mode="json") if video.story else None
+    return values

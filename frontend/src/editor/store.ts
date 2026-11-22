@@ -2,7 +2,7 @@ import { temporal } from "zundo";
 import { create } from "zustand";
 import type { Video } from "../api/types";
 import { nextPlayable } from "./edlOps";
-import type { ClipDetail, Edl, Peaks, Span, Word } from "./types";
+import type { ClipDetail, Edl, MouthCue, Peaks, Span, Word } from "./types";
 
 export type SaveState = "saved" | "pending" | "saving" | "error";
 
@@ -10,6 +10,8 @@ export interface EditorAssets {
   transcript: Word[];
   speech: Span[];
   peaks: Peaks | null;
+  /** Stories: the narrator's mouth shapes over the whole narration (source time). */
+  mouthCues: MouthCue[];
 }
 
 interface EditorState extends EditorAssets {
@@ -52,6 +54,7 @@ const EMPTY: Pick<
   | "transcript"
   | "speech"
   | "peaks"
+  | "mouthCues"
   | "playhead"
   | "playing"
   | "selectedRange"
@@ -65,6 +68,7 @@ const EMPTY: Pick<
   transcript: [],
   speech: [],
   peaks: null,
+  mouthCues: [],
   playhead: 0,
   playing: false,
   selectedRange: null,

@@ -12,12 +12,14 @@ from src.adapters.output.persistence.postgres_video_repository import PostgresVi
 from src.adapters.output.queue.redis_stream_queue_adapter import RedisStreamQueueAdapter
 from src.adapters.output.storage.local_fs_storage_adapter import LocalFsStorageAdapter
 from src.adapters.output.storage.music_manifest import load_default_tracks
+from src.application.services.background_library_service import BackgroundLibraryService
 from src.application.services.clip_editing_service import ClipEditingService
 from src.application.services.clip_export_service import ClipExportService
 from src.application.services.clip_tracking_service import ClipTrackingService
 from src.application.services.job_scheduler import JobScheduler
 from src.application.services.job_service import JobService
 from src.application.services.music_library_service import MusicLibraryService
+from src.application.services.story_service import StoryService
 from src.application.services.video_library_service import VideoLibraryService
 from src.config.settings import Settings
 
@@ -41,6 +43,8 @@ class Container:
     music_library: MusicLibraryService
     clip_export: ClipExportService
     clip_tracking: ClipTrackingService
+    stories: StoryService
+    backgrounds: BackgroundLibraryService
     #: Drains driven adapters on shutdown — closes Redis, the Postgres pool and the threads.
     aclose: Callable[[], Awaitable[None]]
 
@@ -63,7 +67,11 @@ def build_container(settings: Settings) -> Container:
     videos = PostgresVideoRepository(sessionmaker)
     clips = PostgresClipRepository(sessionmaker)
     storage = LocalFsStorageAdapter(
-        settings.data_dir, executor, settings.default_music_dir, settings.outbox_dir
+        settings.data_dir,
+        executor,
+        settings.default_music_dir,
+        settings.outbox_dir,
+        settings.characters_dir,
     )
     progress = RedisPubSubProgressAdapter(redis)
     scheduler = JobScheduler(jobs=jobs, queue=RedisStreamQueueAdapter(redis), progress=progress)
@@ -102,5 +110,7 @@ def build_container(settings: Settings) -> Container:
         clip_tracking=ClipTrackingService(
             clips=clips, videos=videos, jobs=jobs, storage=storage, scheduler=scheduler
         ),
+        stories=StoryService(videos=videos, storage=storage, scheduler=scheduler),
+        backgrounds=BackgroundLibraryService(storage=storage, jobs=jobs, scheduler=scheduler),
         aclose=aclose,
     )

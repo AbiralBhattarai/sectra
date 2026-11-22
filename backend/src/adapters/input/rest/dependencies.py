@@ -1,10 +1,12 @@
 from fastapi import Request
 
+from src.ports.input.background_library_port import BackgroundLibraryPort
 from src.ports.input.clip_editing_port import ClipEditingPort
 from src.ports.input.clip_export_port import ClipExportPort
 from src.ports.input.clip_tracking_port import ClipTrackingPort
 from src.ports.input.job_management_port import JobManagementPort
 from src.ports.input.music_library_port import MusicLibraryPort
+from src.ports.input.story_port import StoryPort
 from src.ports.input.video_library_port import VideoLibraryPort
 
 
@@ -30,3 +32,11 @@ def get_clip_export(request: Request) -> ClipExportPort:
 
 def get_clip_tracking(request: Request) -> ClipTrackingPort:
     return request.app.state.container.clip_tracking
+
+
+def get_stories(request: Request) -> StoryPort:
+    return request.app.state.container.stories
+
+
+def get_backgrounds(request: Request) -> BackgroundLibraryPort:
+    return request.app.state.container.backgrounds

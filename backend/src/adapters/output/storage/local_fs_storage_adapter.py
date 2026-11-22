@@ -1,3 +1,4 @@
+import functools
 import json
 import shutil
 from collections.abc import AsyncIterator
@@ -10,6 +11,8 @@ from src.domain.enums.video_file_enum import VideoFile
 from src.domain.services.outbox_naming import folder_name, outbox_stem, unique_stem
 from src.utils.concurrency import run_blocking
 
+#: Scratch space for background downloads/uploads, inside the backgrounds root.
+_INCOMING = ".incoming"
 #: Upload chunks are buffered to this size before each (threaded) disk write.
 _WRITE_BUFFER = 4 * 1024 * 1024
 
@@ -25,9 +28,12 @@ class LocalFsStorageAdapter:
         executor: Executor,
         default_music_dir: Path | None = None,
         outbox_dir: Path | None = None,
+        characters_dir: Path | None = None,
     ) -> None:
         self._videos_root = root / "videos"
         self._music_root = root / "music"
+        self._backgrounds_root = root / "backgrounds"
+        self._characters_root = characters_dir or Path("../assets/characters")
         self._outbox_root = outbox_dir or root / "outbox"
         self._default_music_root = default_music_dir
         self._executor = executor
@@ -142,16 +148,67 @@ class LocalFsStorageAdapter:
             await run_blocking(self._executor, handle.close)
 
     async def read_text(self, video_id: UUID, file: VideoFile) -> str:
-        return await run_blocking(self._executor, self.path(video_id, file).read_text)
+        path = self.path(video_id, file)
+        return await run_blocking(
+            self._executor, functools.partial(path.read_text, encoding="utf-8")
+        )
 
     async def write_text(self, video_id: UUID, file: VideoFile, content: str) -> None:
         def write() -> None:
             target = self.path(video_id, file)
             partial = target.with_name(f"{target.name}.partial")
-            partial.write_text(content)
+            partial.write_text(content, encoding="utf-8")
             partial.replace(target)
 
         await run_blocking(self._executor, write)
+
+    def background_incoming_dir(self, job_id: UUID) -> Path:
+        path = self._backgrounds_root / _INCOMING / str(job_id)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    async def save_background_upload(
+        self, job_id: UUID, extension: str, chunks: AsyncIterator[bytes]
+    ) -> Path:
+        dest = self.background_incoming_dir(job_id) / f"raw.{extension}"
+        await self._stream_to(dest, chunks)
+        return dest
+
+    def background_path(self, category: str, file: str) -> Path:
+        directory = self._backgrounds_root / category
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / file
+
+    def list_backgrounds(self) -> list[tuple[str, str]]:
+        if not self._backgrounds_root.is_dir():
+            return []
+        return sorted(
+            (category.name, file.name)
+            for category in self._backgrounds_root.iterdir()
+            if category.is_dir() and category.name != _INCOMING
+            for file in category.glob("*.mp4")
+            if not file.name.endswith(".partial.mp4")
+        )
+
+    async def delete_background(self, category: str, file: str) -> None:
+        def delete() -> None:
+            (self._backgrounds_root / category / file).unlink(missing_ok=True)
+            directory = self._backgrounds_root / category
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+
+        await run_blocking(self._executor, delete)
+
+    async def remove_background_incoming(self, job_id: UUID) -> None:
+        await run_blocking(
+            self._executor,
+            shutil.rmtree,
+            self._backgrounds_root / _INCOMING / str(job_id),
+            True,
+        )
+
+    def character_path(self, name: str, layer: str) -> Path:
+        return self._characters_root / name / layer
 
     async def delete_video(self, video_id: UUID) -> None:
         await run_blocking(self._executor, shutil.rmtree, self._videos_root / str(video_id), True)

@@ -4,8 +4,10 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from src.application.dto.job import JobDTO
+from src.domain.enums.video_kind_enum import VideoKind
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.models.job import Job
+from src.domain.models.story import StorySpec
 from src.domain.models.video import Video
 
 #: Longest "what kind of clips" prompt accepted.
@@ -31,6 +33,8 @@ class VideoDTO(BaseModel):
     width: int | None
     height: int | None
     clip_prompt: str
+    kind: VideoKind
+    story: StorySpec | None
     created_at: datetime
     #: Most recent pipeline job, i.e. the stage the video is in (or last finished).
     current_job: JobDTO | None

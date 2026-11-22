@@ -49,6 +49,16 @@ class PostgresJobRepository:
         async with self._sessionmaker() as session:
             return {row.video_id: _to_domain(row) for row in await session.scalars(query)}
 
+    async def list_by_type(self, job_type: JobType, limit: int = 100) -> list[Job]:
+        query = (
+            select(JobRow)
+            .where(JobRow.type == job_type.value)
+            .order_by(JobRow.created_at.desc())
+            .limit(limit)
+        )
+        async with self._sessionmaker() as session:
+            return [_to_domain(row) for row in await session.scalars(query)]
+
     async def list_for_clip(self, clip_id: UUID, job_type: JobType) -> list[Job]:
         query = (
             select(JobRow)

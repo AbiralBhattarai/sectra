@@ -30,6 +30,10 @@ class InMemoryJobRepository:
                 latest[job.video_id] = job
         return latest
 
+    async def list_by_type(self, job_type, limit: int = 100) -> list[Job]:
+        jobs = [j for j in self.jobs.values() if j.type == job_type]
+        return sorted(jobs, key=lambda j: j.created_at, reverse=True)[:limit]
+
     async def list_for_clip(self, clip_id: UUID, job_type) -> list[Job]:
         jobs = [j for j in self.jobs.values() if j.clip_id == clip_id and j.type == job_type]
         return sorted(jobs, key=lambda j: j.created_at, reverse=True)

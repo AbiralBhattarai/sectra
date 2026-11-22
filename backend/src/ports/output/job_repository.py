@@ -24,6 +24,10 @@ class JobRepository(Protocol):
         """Most recently created job per video, for the videos that have one."""
         ...
 
+    async def list_by_type(self, job_type: JobType, limit: int = 100) -> list[Job]:
+        """The newest jobs of ``job_type``, newest first."""
+        ...
+
     async def list_for_clip(self, clip_id: UUID, job_type: JobType) -> list[Job]:
         """The clip's jobs of ``job_type``, newest first."""
         ...

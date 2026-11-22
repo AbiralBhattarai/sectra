@@ -9,3 +9,7 @@ class LLMPort(Protocol):
         provider fails and ``InvalidLLMOutputException`` when the reply isn't JSON.
         The caller still validates the object against the schema."""
         ...
+
+    async def complete_text(self, system: str, user: str) -> str:
+        """Plain-text answer (reasoning blocks stripped). Raises ``LLMException``."""
+        ...

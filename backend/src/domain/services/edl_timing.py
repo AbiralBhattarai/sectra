@@ -17,3 +17,13 @@ def source_to_output(t: float, ranges: list[TimeSpan]) -> float:
             return elapsed + (t - r.start)
         elapsed += r.duration
     return elapsed
+
+
+def output_to_source(o: float, ranges: list[TimeSpan]) -> float:
+    """Source time shown at output time ``o``."""
+    remaining = max(0.0, o)
+    for r in ranges:
+        if remaining <= r.duration:
+            return r.start + remaining
+        remaining -= r.duration
+    return ranges[-1].end if ranges else 0.0

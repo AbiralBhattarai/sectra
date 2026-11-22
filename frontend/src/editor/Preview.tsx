@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mediaUrl } from "../api/client";
 import { CaptionOverlay } from "./CaptionOverlay";
+import { CharacterLayer } from "./CharacterLayer";
 import {
   cropAt,
   croppedVideoStyle,
@@ -233,6 +234,7 @@ export function Preview() {
               onPointerUp={commitCam}
             />
           )}
+          <CharacterLayer />
           <CaptionOverlay />
           <OverlayLayer />
         </div>

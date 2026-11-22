@@ -1,7 +1,9 @@
 from src.domain.enums.caption_style_enum import CaptionStyle
+from src.domain.models.character import MouthCue
 from src.domain.models.edl import Edl
 from src.domain.models.render import (
     CaptionCue,
+    CharacterPlan,
     CropBox,
     CropMove,
     PipBox,
@@ -10,6 +12,7 @@ from src.domain.models.render import (
     ZoomCue,
 )
 from src.domain.services.caption_pages import hide_time, paginate
+from src.domain.services.character_timeline import character_box
 from src.domain.services.edl_timing import output_duration, source_to_output
 from src.domain.services.framing import (
     OUTPUT_SIZES,
@@ -25,7 +28,10 @@ _MIN_OVERLAY_SECONDS = 0.1
 _MIN_ZOOM_SECONDS = 0.05
 
 
-def plan_render(edl: Edl, source_width: int, source_height: int) -> RenderPlan:
+def plan_render(
+    edl: Edl, source_width: int, source_height: int, mouth_cues: list[MouthCue] | None = None
+) -> RenderPlan:
+    """``mouth_cues``: the narrator's lip sync (source time), when ``edl.character`` is set."""
     width, height = OUTPUT_SIZES[edl.aspect]
     tracking = tracking_on(edl)  # never in streamer mode
     # Streamer mode, then tracking, win over the split; the UI keeps them exclusive.
@@ -54,11 +60,31 @@ def plan_render(edl: Edl, source_width: int, source_height: int) -> RenderPlan:
         height=height,
         duration=duration,
         caption_style=edl.captions.style,
+        caption_y=edl.captions.y,
         captions=_cues(edl, edl.captions.style),
         subtitles=_cues(edl, CaptionStyle.CLEAN),
         overlays=overlays,
         music_volume=edl.music.volume if edl.music else None,
         duck_music=bool(edl.music and edl.music.duck),
+        character=_character(edl, mouth_cues or []),
+    )
+
+
+def _character(edl: Edl, cues: list[MouthCue]) -> CharacterPlan | None:
+    track = edl.character
+    if track is None or not track.enabled:
+        return None
+    x, y, width, height = character_box(edl.aspect, track)
+    bounds = (edl.ranges[0].start, edl.ranges[-1].end)
+    return CharacterPlan(
+        name=track.name,
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        # Only what the clip can show, so the plan stays small for long stories.
+        cues=[c for c in cues if c.end > bounds[0] and c.start < bounds[1]],
+        moods=track.moods,
     )
 
 

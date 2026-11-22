@@ -176,10 +176,13 @@ interface CardProps {
   onSelect: () => void;
   onRetry: (job: Job) => void;
   onDelete: () => void;
+  /** Overrides of the stage names (stories call ANALYZE "split into parts"). */
+  stageNames?: Record<string, string>;
 }
 
-function VideoCard({ video, selected, onSelect, onRetry, onDelete }: CardProps) {
+export function VideoCard({ video, selected, onSelect, onRetry, onDelete, stageNames }: CardProps) {
   const job = video.current_job;
+  const names = { ...STAGE_NAMES, ...stageNames };
   return (
     <li
       className={`video-card${selected ? " selected" : ""}`}
@@ -200,7 +203,7 @@ function VideoCard({ video, selected, onSelect, onRetry, onDelete }: CardProps) 
         )}
         {video.status === "processing" && job && (
           <>
-            <span className="stage">{stageLabel(job)}</span>
+            <span className="stage">{stageLabel(job, names)}</span>
             <progress value={job.progress} max={1} />
           </>
         )}
@@ -215,7 +218,7 @@ function VideoCard({ video, selected, onSelect, onRetry, onDelete }: CardProps) 
                 onRetry(job);
               }}
             >
-              Retry {STAGE_NAMES[job.type] ?? job.type}
+              Retry {names[job.type] ?? job.type}
             </button>
           </>
         )}
@@ -243,10 +246,12 @@ const STAGE_NAMES: Record<string, string> = {
   transcribe: "transcribe",
   analyze: "find clips",
   export: "export",
+  narrate: "narrate",
+  compose: "build the video",
 };
 
-function stageLabel(job: Job): string {
-  const name = STAGE_NAMES[job.type] ?? job.type;
+function stageLabel(job: Job, names: Record<string, string>): string {
+  const name = names[job.type] ?? job.type;
   const label = name[0].toUpperCase() + name.slice(1);
   return job.status === "queued" ? `Waiting to ${name}` : `${label} · ${Math.round(job.progress * 100)}%`;
 }

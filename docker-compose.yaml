@@ -5,6 +5,7 @@ x-backend-env: &backend-env
   REDIS_URL: redis://redis:6379/0
   DATA_DIR: /data
   DEFAULT_MUSIC_DIR: /opt/music
+  CHARACTERS_DIR: /opt/characters
 
 services:
   postgres:
@@ -53,6 +54,8 @@ services:
       - ${SECTRA_DATA_DIR:-./data}:/data
       # Built-in CC0 music library (`make music`).
       - ./assets/music:/opt/music:ro
+      # Narrator characters (scripts/make_characters.py); the editor loads their layers.
+      - ./assets/characters:/opt/characters:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -65,6 +68,9 @@ services:
       VAD_MODEL_PATH: /opt/models/silero_vad.onnx
       FACE_MODEL_PATH: /opt/models/face_detection_yunet.onnx
       ASD_MODEL_PATH: /opt/models/light_asd.onnx
+      TTS_MODEL_PATH: /opt/models/kokoro-v1.0.int8.onnx
+      TTS_VOICES_PATH: /opt/models/voices-v1.0.bin
+      RHUBARB_PATH: /opt/rhubarb/rhubarb
       FONTS_DIR: /opt/fonts
     volumes:
       - ./backend/src:/app/src
@@ -74,6 +80,7 @@ services:
       # Caption/overlay fonts for libass — the same files the preview loads.
       - ./assets/fonts:/opt/fonts:ro
       - ./assets/music:/opt/music:ro
+      - ./assets/characters:/opt/characters:ro
     extra_hosts: ["host.docker.internal:host-gateway"]
     stop_grace_period: 40s
     restart: unless-stopped

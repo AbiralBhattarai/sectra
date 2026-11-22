@@ -10,6 +10,7 @@ from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_file_enum import VideoFile
 from src.domain.exceptions import MediaProcessingException, NotFoundException
+from src.domain.models.character import LipSync, MouthCue
 from src.domain.models.edl import Edl
 from src.domain.models.job import Job
 from src.domain.services.edl_rules import validate_edl
@@ -129,9 +130,10 @@ class ClipExportService:
         if music is not None and not music.is_file():
             raise MediaProcessingException(f"Music track {edl.music.file} is missing")
 
+        cues = await self._mouth_cues(video_id) if edl.character else []
         output = self._storage.export_path(video_id, job.id, "mp4")
         await self._renderer.render(
-            plan_render(edl, video.width, video.height),
+            plan_render(edl, video.width, video.height, cues),
             self._storage.path(video_id, VideoFile.SOURCE),
             music,
             output,
@@ -140,6 +142,14 @@ class ClipExportService:
         )
         if (rank := job.payload.get("outbox_rank")) is not None:
             await self._to_outbox(job, rank, video.title, output)
+
+    async def _mouth_cues(self, video_id: UUID) -> list[MouthCue]:
+        """The narrator's lip sync; a story narrated without it keeps the mouth at rest."""
+        try:
+            text = await self._storage.read_text(video_id, VideoFile.LIPSYNC)
+        except FileNotFoundError:
+            return []
+        return LipSync.model_validate_json(text).cues
 
     async def _to_outbox(self, job: Job, rank: int, video_title: str, output: Path) -> None:
         payload = job.payload

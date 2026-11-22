@@ -40,6 +40,21 @@ class OpenAICompatLLMAdapter:
                 raise LLMException(f"LLM request failed: {exc}") from exc
         return parse_json_object(response.choices[0].message.content or "")
 
+    async def complete_text(self, system: str, user: str) -> str:
+        async with self._semaphore:
+            try:
+                response = await self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    temperature=0.3,
+                )
+            except APIError as exc:
+                raise LLMException(f"LLM request failed: {exc}") from exc
+        return _THINKING.sub("", response.choices[0].message.content or "").strip()
+
 
 def parse_json_object(text: str) -> dict[str, Any]:
     """The JSON object in ``text``, tolerating reasoning blocks, code fences and

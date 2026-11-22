@@ -46,6 +46,8 @@ export function CaptionEditor() {
         </select>
       </label>
 
+      <CaptionPosition />
+
       {selected != null && words[selected] && <WordForm index={selected} word={words[selected]} />}
 
       <ol className="caption-pages">
@@ -68,6 +70,41 @@ export function CaptionEditor() {
         ))}
       </ol>
       {words.length === 0 && <p className="placeholder">No words in this clip.</p>}
+    </div>
+  );
+}
+
+/** Where the captions sit: the style's own spot, or a height chosen by the user (the
+ * bottom edge of the text, as a fraction of the frame). */
+function CaptionPosition() {
+  const y = useEditor((s) => s.edl?.captions.y ?? null);
+  const { edit } = useEditor.getState();
+  const [draft, setDraft] = useState<number | null>(null);
+  const setY = (value: number | null) => edit((e) => ({ ...e, captions: { ...e.captions, y: value } }));
+  const commit = () => {
+    if (draft != null) setY(draft);
+    setDraft(null);
+  };
+  return (
+    <div className="caption-position">
+      <label className="checkbox">
+        <input type="checkbox" checked={y != null} onChange={(e) => setY(e.target.checked ? 0.8 : null)} />
+        Custom height
+      </label>
+      {y != null && (
+        <input
+          type="range"
+          min={0.1}
+          max={0.98}
+          step={0.01}
+          value={draft ?? y}
+          aria-label="Caption height"
+          title="Bottom edge of the captions, top (left) to bottom (right)"
+          onChange={(e) => setDraft(Number(e.target.value))}
+          onPointerUp={commit}
+          onKeyUp={commit}
+        />
+      )}
     </div>
   );
 }

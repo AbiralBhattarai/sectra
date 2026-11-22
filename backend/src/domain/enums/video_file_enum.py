@@ -10,3 +10,5 @@ class VideoFile(StrEnum):
     THUMBNAIL = "thumbnail.jpg"
     SPEECH = "speech.json"  # VAD speech segments, in seconds
     TRANSCRIPT = "transcript.json"  # word-timed transcript on the source timeline
+    NARRATION = "narration.wav"  # stories: the TTS narration (source.mp4's audio)
+    LIPSYNC = "lipsync.json"  # stories: the narrator's mouth shapes, source time

@@ -32,6 +32,7 @@ export function ClipsPanel({ video, selectedClipId, onSelect }: Props) {
     void post(clip, text);
   };
   const job = video?.current_job;
+  const story = video?.kind === "story";
   // Refetch when the selected video changes or its analysis finishes (again).
   const analysisKey = job?.type === "analyze" ? `${job.id}:${job.status}` : "";
 
@@ -52,8 +53,11 @@ export function ClipsPanel({ video, selectedClipId, onSelect }: Props) {
   return (
     <section className="panel clips">
       <header className="panel-header">
-        <h2>Clips{clips.length > 0 && ` · ${clips.length}`}</h2>
-        {video?.status === "ready" && (
+        <h2>
+          {story ? "Parts" : "Clips"}
+          {clips.length > 0 && ` · ${clips.length}`}
+        </h2>
+        {video?.status === "ready" && !story && (
           <button
             type="button"
             className="small"
@@ -61,6 +65,19 @@ export function ClipsPanel({ video, selectedClipId, onSelect }: Props) {
             onClick={() => setRefind(refind === null ? video.clip_prompt : null)}
           >
             Find clips again
+          </button>
+        )}
+        {video?.status === "ready" && story && (
+          <button
+            type="button"
+            className="small"
+            title="Rebuild the parts (title cards, expressions, captions) from the narration — replaces your edits"
+            onClick={() => {
+              if (!window.confirm("Rebuild the parts? Your edits to them are replaced.")) return;
+              findClipsAgain(video.id).catch((e: Error) => setError(e.message));
+            }}
+          >
+            Rebuild parts
           </button>
         )}
       </header>
@@ -142,6 +159,11 @@ export function ClipsPanel({ video, selectedClipId, onSelect }: Props) {
 }
 
 function emptyMessage(video: Video): string {
+  if (video.kind === "story") {
+    if (video.status === "processing") return "The parts appear once the story is narrated and captioned.";
+    if (video.status === "failed") return "Narration failed — retry it on the left.";
+    return "No parts yet.";
+  }
   if (video.status === "processing") return "Clips appear once analysis finishes.";
   if (video.status === "failed") return "Processing failed before clips were found.";
   return "The LLM found no clip-worthy moments in this video.";

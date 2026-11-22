@@ -81,3 +81,33 @@ def _progress_parser(duration: float | None, on_progress: OnProgress | None) -> 
             await on_progress(min(int(value) / 1_000_000 / duration, 1.0))
 
     return on_line
+
+
+async def run_ffmpeg_fed(args: list[str], chunks: AsyncIterator[bytes]) -> None:
+    """Run ffmpeg reading raw input from stdin (``args`` use ``-i pipe:0``), feeding it
+    ``chunks``. Kills the process if the calling task is cancelled."""
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-nostdin", "-y", "-loglevel", "error", *args,
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )  # fmt: skip
+    stderr_task = asyncio.create_task(proc.stderr.read())
+    try:
+        try:
+            async for chunk in chunks:
+                proc.stdin.write(chunk)
+                await proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # ffmpeg died; its exit code and stderr say why
+        finally:
+            proc.stdin.close()
+        code = await proc.wait()
+        stderr = await stderr_task
+    except BaseException:
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+        stderr_task.cancel()
+        raise
+    if code != 0:
+        raise MediaProcessingException(f"ffmpeg failed: {stderr_tail(stderr)}")
