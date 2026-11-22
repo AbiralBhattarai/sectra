@@ -77,3 +77,9 @@ def test_shots_always_start_at_the_span(min_shot):
     a = track(0, [2.0] * 10 + [-2.0] * 10)
     b = track(1, [-2.0] * 10 + [2.0] * 10, centre=(0.8, 0.5))
     assert build_shots([a, b], SPAN, FPS, min_shot)[0].start == SPAN.start
+
+
+def test_first_shot_starts_exactly_at_an_unrounded_span():
+    span = TimeSpan(start=12.3456789, end=20)
+    shots = build_shots([track(0, [2.0] * 30)], span, FPS, min_shot_seconds=1)
+    assert shots[0].start == span.start  # the EDL rules require an exact match

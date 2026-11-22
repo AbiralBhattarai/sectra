@@ -27,7 +27,7 @@ async def test_add_url_then_list(client, redis):
     assert listed["id"] == video["id"]
     assert listed["status"] == "processing"
     assert listed["current_job"]["type"] == "ingest"
-    assert len(await redis.xrange("jobs:analysis")) == 1
+    assert len(await redis.xrange("jobs:ingest")) == 1
 
 
 async def test_add_rejects_non_http_url(client):
@@ -75,3 +75,28 @@ async def test_delete_then_404(client):
     assert (await client.delete(f"/api/videos/{video_id}")).status_code == 204
     assert (await client.get(f"/api/videos/{video_id}")).status_code == 404
     assert (await client.delete(f"/api/videos/{uuid4()}")).status_code == 404
+
+
+async def test_clip_prompt_is_stored_trimmed_and_replaced_on_find_again(client, tmp_path):
+    response = await client.post(
+        "/api/videos", json={"url": "https://a.example", "clip_prompt": "  funny\n fails "}
+    )
+    video = response.json()
+    assert video["clip_prompt"] == "funny fails"
+
+    upload = await client.post(
+        "/api/videos/upload",
+        params={"filename": "t.mp4", "clip_prompt": "rage"},
+        content=b"x",
+    )
+    assert upload.json()["clip_prompt"] == "rage"
+    assert (await client.post("/api/videos", json={"url": "https://b.example"})).json()[
+        "clip_prompt"
+    ] == ""
+
+
+async def test_find_again_without_body_keeps_working(client):
+    video_id = (await client.post("/api/videos", json={"url": "https://a.example"})).json()["id"]
+    # Still processing → 422, but the empty body itself is accepted.
+    response = await client.post(f"/api/videos/{video_id}/analyze")
+    assert response.status_code == 422

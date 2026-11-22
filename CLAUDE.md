@@ -53,6 +53,13 @@ than working around the rule.**
   start it replays its own un-acked messages (`XREADGROUP … 0`) before reading new
   ones. `attempts` counts deliveries; past `JOB_MAX_ATTEMPTS` the job is failed.
   (Single worker, so no `XAUTOCLAIM`; add it if a second worker is ever run.)
+- **Redis reads must not time out client-side**: the shared client has
+  `socket_timeout=None` (redis-py 8 defaults to 5 s, and a briefly busy loop then killed
+  the whole worker mid-XREADGROUP). A consumer catches Redis timeouts/connection errors
+  and retries with backoff (1→30 s) instead of dying; `worker_main` still exits if any
+  consumer task ends, and compose restarts `worker`/`api` (`restart: unless-stopped`).
+- Keep CPU work off the event loop in the worker: ANALYZE parses the transcript, selects
+  clips and builds 50 EDLs (+ auto zooms) in `asyncio.to_thread`.
 - Shutdown: SIGTERM drains in-flight jobs for up to 30s, then cancels them
   (they stay pending → replayed). `stop_grace_period: 40s` in compose.
 - Progress: dispatcher saves + publishes `JobEvent` on Redis pub/sub
@@ -130,7 +137,13 @@ Clips (ANALYZE):
   prompt. The top `2 × CLIP_MAX_COUNT` (≤ 20) candidates then get one head-to-head
   ranking request; final score = ½ rubric + ½ rank; malformed ranking → rubric order.
 - `POST /api/videos/{id}/analyze` ("Find clips again") re-runs ANALYZE and
-  **replaces** the clips, edits included (the UI confirms first).
+  **replaces** the clips, edits included (the UI's form warns first).
+- User guidance: `Video.clip_prompt` (migration `0005`; whitespace collapsed, ≤ 1000
+  chars) — set on `POST /api/videos` (`clip_prompt`), upload (`?clip_prompt=`) or the
+  optional body of `/analyze` (replaces it). It lives on the video because the dispatcher
+  creates ANALYZE with no payload. `system_prompt(..., guidance)` /
+  `rank_system_prompt(guidance)` add it before "Reply with JSON only."; **empty ⇒ the
+  default prompts byte-for-byte** (tested).
 - Malformed JSON is retried once per window; if *every* window is malformed the
   stage fails. Provider errors fail it immediately. Re-analysis replaces the
   video's clips (`ClipRepository.replace_for_video`).
@@ -177,6 +190,65 @@ Export (EXPORT job, `jobs:render` stream):
 - ffmpeg subprocess handling lives in `adapters/output/media/ffmpeg_process.py`,
   shared by media prep and rendering; both use one ffmpeg semaphore.
 
+Zoom-ins:
+- `Edl.zooms` (source time, sorted, non-overlapping): `scale` 1–2 over the framed picture,
+  centred on the crop (so on the tracked face); `ramp` 0 = hard punch-in, > 0 = linear push.
+  Ignored with `split_screen`. `framing.zoom_at` ≡ `crop.ts zoomAt` (mirrored tests).
+- Render: `RenderPlan.zooms` (output time) → after `crop,scale=W:H` the pane gets
+  `scale=w='2*trunc(W*Z(t)/2)':…:eval=frame,crop=W:H` with `Z(t)` written flat (one
+  `gte*lt` term per zoom, `clip()` ramp for pushes). `subtitles=` comes after, so captions
+  never zoom. Needs ffmpeg ≥ 5 (`t` in `scale` with `eval=frame`).
+- `domain/services/auto_zoom.py` (pure) places them: hook push, punches alternating on
+  sentence changes every 3–6 s, ×1.3 on loud stretches (`peaks.json`, clearly above the
+  clip's median), ×1.25 on the payoff (last sentence). Priority energy > payoff > hook >
+  beats; pieces < 0.8 s dropped. `POST /api/clips/{id}/auto-zoom` returns them unsaved
+  (the editor's "Auto zoom" applies them as one undo step).
+
+Automatic edit → outbox (`AUTO_ZOOM`, `AUTO_TRACK`, `AUTO_EXPORT`):
+- ANALYZE adds zooms to each clip, then hands clips on best first with `rank = i+1`:
+  `request_tracking(auto_rank=…)` (never reuses a job) or `request_export(outbox_rank=…)`.
+- An `auto_rank` TRACK job applies the shots to the clip **in the worker** (nobody has it
+  open) and queues the export; if tracking fails (no faces, tracker error) it exports
+  centre-cropped anyway.
+- An `outbox_rank` EXPORT also copies the mp4 to
+  `<OUTBOX_DIR>/<video title> [<id8>]/<NN> <caption>.mp4` + `.json` sidecar (caption,
+  rank, score, ids, `posted`, `failures`). Names via `domain/services/outbox_naming.py`
+  (Windows-safe, ≤ 120 chars, ` (2)` on collision); the **sidecar holds the exact
+  caption** and is written last. Default `OUTBOX_DIR` = `<DATA_DIR>/outbox` = `./data/outbox`.
+- `Clip.caption` (LLM: hook line + 3–5 hashtags; editable in the Export tab, sent as
+  `caption` on `PUT /api/clips/{id}`, omitted = unchanged). Migration `0004`.
+- 50 clips: `CLIP_MAX_COUNT=50`, `LLM_CLIPS_PER_WINDOW=5`, `CLIP_MAX_OVERLAP=0.2`. Only the
+  top 20 (by rubric) go to the head-to-head ranking (context size); the rest follow in rubric
+  order and are never scored above a ranked clip.
+
+Poster (`poster/`, host only, like `whisper-server/`):
+- Own uv project (`cd poster && uv run pytest`). Playwright with the installed Chrome
+  (`BROWSER_CHANNEL=chrome`), one persistent profile per platform in `poster/profiles/`
+  (gitignored — logged-in sessions).
+- `uv run poster login <platform>` opens **plain Chrome** (not Playwright-driven) on that
+  profile for a by-hand login; `poster serve [--dry-run]` (`make poster`) posts Post-button
+  clips right away; `poster run [--dry-run] [--once]` (`make poster-schedule`) posts the
+  automatic outbox on schedule; `poster status`.
+- Platforms: youtube, tiktok, instagram, **x**, facebook (`PLATFORMS` in `poster/.env`;
+  default the first four). X text is cut to 280 chars (`platforms/x.py fit_text`).
+- **Post button**: `POST /api/clips/{id}/post` = an EXPORT with `outbox_rank=0` plus
+  `post_now`, `description` (= clip **title** + `Clip.post_caption`, joined by
+  `outbox_naming.post_description`) and `platforms` (`POST_PLATFORMS`) in the
+  payload and sidecar. `post_caption` (migration `0006`) is the card's free-text field
+  ("#lacy"); the optional body `{post_caption}` saves it on the clip, omitted = keep. `serve` polls every 5 s and posts each `post_now` clip to each
+  named platform it has enabled (no schedule/cap); `run` skips `post_now` clips.
+  `GET /api/clips/{id}/post` reads the sidecar back (204 if never posted); the card polls it.
+- The sidecars are the queue's state (`posted`/`failures`/`blocked` per platform);
+  `state.json` only keeps each platform's planned next slot and a `paused` reason.
+  Login/captcha pages pause the platform (no evasion) and, for Post clicks, write
+  `blocked[platform].reason`; errors **after** the upload starts count as a failure
+  (`MAX_FAILURES` → `gave_up`), errors before it (site slow, browser won't start) don't.
+  Failures back off (serve: 1 min doubling; run: 15 min).
+- `schedule.py` (pure): `POSTS_PER_DAY` (10) spread over `ACTIVE_HOURS` (9-23) with ±25%
+  jitter; cap reached → next day's opening.
+- Selectors live at the top of each `platforms/*.py`; failures save a screenshot to
+  `poster/logs/`. They will need updating when the sites change.
+
 Face tracking (TRACK job, `jobs:tracking` stream):
 - "Face tracking" checkbox → `POST /api/clips/{id}/tracking` → a TRACK job over the clip's
   bounds ± 2 s. A queued/running/succeeded job that covers the ranges is **reused**.
@@ -197,9 +269,29 @@ Face tracking (TRACK job, `jobs:tracking` stream):
   so the crop size never changes and the render switches position with a step
   expression in the crop filter (`RenderPlan.crop_moves`) — no extra inputs.
   `framing.crop_at` ≡ `crop.ts cropAt`. Tracking on ⇒ `split_screen` is ignored.
+- The first shot starts **exactly** at `span.start` (other shot times are rounded to ms)
+  and the span start is rounded to ms; `edl_rules` allows 1 ms. (A rounded first shot vs
+  an unrounded span once made every autosave of a tracked clip 422.)
+- The editor waits for autosave (`whenSaved`) before `POST …/tracking`, since the server
+  tracks the clip's *saved* bounds. A queued job shows "waiting for the worker…".
+
+Streamer mode (`Edl.facecam`):
+- `Facecam(x, y, scale)` = the source window (4:3, centre + zoom) shown in a fixed box at
+  the bottom right: 40% of the frame's shorter side wide, 4% inset (`framing.pip_box` ≡
+  `crop.ts pipBox`, `facecam_window` ≡ `facecamWindow`, mirrored tests). Main frame =
+  the normal `crop` (gameplay); zooms apply to it only.
+- Facecam set ⇒ split and tracking are ignored (`tracking_on` is false); the toolbar keeps
+  the three exclusive. Render: `[cut]split=2[main][cam]` → gameplay pane, `crop,scale`
+  facecam → `overlay` → `subtitles` (captions stay on top). `RenderPlan.pip`; not part of
+  `crops` (the pane height divides by `len(crops)`).
+- Preview: a `.pip` canvas fed from the one `<video>` (like the split's bottom pane); its
+  pointer handlers `stopPropagation` so dragging it pans the facecam, not the gameplay.
 
 ## Things that will bite you
 
+- **Frame-evaluated zoom must centre by hand:** after `scale=…:eval=frame`, `crop`'s
+  `iw/ih` (and its default centring) keep the configured size, so a plain `crop=W:H`
+  cropped the **top-left**. `_zoom` writes `x/y` from `t` with the same factor as the scale.
 - **SSE and shutdown:** `/api/events` never ends, so uvicorn must run with
   `--timeout-graceful-shutdown` (set in compose and `Dockerfile.api`); without it
   every reload/stop hangs while a browser tab is open.
@@ -250,9 +342,16 @@ Editor (`frontend/src/editor/`, `timeline/`):
   measuring the track (ResizeObserver) before it exists threw and — with no error
   boundary — unmounted the whole app. Editor and timeline are now wrapped in
   `ErrorBoundary`, so a panel crash shows an error instead of a blank page.
-- Clip cards have one-click **Download** (`panels/useClipDownloads.ts`): reuse an
-  export newer than the clip's `updated_at`, else render and auto-download on the
-  SSE success event. Blocked while the open clip has unsaved edits.
+- Zoom lane in the timeline (select a zoom to drag its edges; `crop.updateZoom` keeps it
+  between its neighbours) and a **Zoom** side-panel tab. The preview scales a `.zoomer`
+  wrapper around the `<video>` inside the pane, so captions/overlays don't zoom.
+- Sources take several URLs at once (one per line); each is a separate `POST /api/videos`.
+- Clip cards have one-click **Post** (`panels/useClipPosting.ts`): render into the
+  outbox, then per-platform chips (✓ posted with link, ✗ gave up, 🔒 needs `poster
+  login`, … waiting) from polling `GET /api/clips/{id}/post`. Blocked while the open clip
+  has unsaved edits. Download lives in the editor's Export tab.
+- Sources has a "What kind of clips?" field sent with every URL/upload; "Find clips
+  again" opens a form prefilled with the video's `clip_prompt`.
 
 UI checks without a desktop browser: run Playwright headless in Docker on the web
 container's network (so `localhost:5173` is Vite and its host check passes):

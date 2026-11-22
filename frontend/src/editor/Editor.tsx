@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import type { Video } from "../api/types";
+import { DEFAULT_FACECAM } from "./crop";
 import { deleteRange, splitAt } from "./edlOps";
 import { loadClip } from "./loadClip";
 import { Preview } from "./Preview";
@@ -75,14 +76,33 @@ function Toolbar() {
       <label className="checkbox" title="Stack the left half of the video over the right half">
         <input
           type="checkbox"
-          checked={edl.split_screen && !faces.checked}
+          checked={edl.split_screen && !faces.checked && !edl.facecam}
           onChange={(event) => {
             const on = event.target.checked;
             if (on) faces.stop();
-            edit((e) => ({ ...(on ? withoutTracking(e) : e), split_screen: on }));
+            edit((e) => ({ ...(on ? withoutTracking(e) : e), split_screen: on, facecam: on ? null : e.facecam }));
           }}
         />
         OmeTV split
+      </label>
+      <label
+        className="checkbox"
+        title="Gameplay fills the frame; drag the bottom-right box onto the streamer's face cam"
+      >
+        <input
+          type="checkbox"
+          checked={edl.facecam != null}
+          onChange={(event) => {
+            const on = event.target.checked;
+            if (on) faces.stop();
+            edit((e) =>
+              on
+                ? { ...withoutTracking(e), split_screen: false, facecam: e.facecam ?? DEFAULT_FACECAM }
+                : { ...e, facecam: null },
+            );
+          }}
+        />
+        Streamer mode
       </label>
       <label
         className="checkbox"
@@ -90,7 +110,8 @@ function Toolbar() {
       >
         <input type="checkbox" checked={faces.checked} onChange={(event) => faces.toggle(event.target.checked)} />
         Face tracking
-        {faces.state?.status === "tracking" && ` ${Math.round(faces.state.progress * 100)}%`}
+        {faces.state?.status === "tracking" &&
+          (faces.state.queued ? " (waiting for the worker…)" : ` ${Math.round(faces.state.progress * 100)}%`)}
         {faces.state?.status === "failed" && <span className="error"> failed</span>}
       </label>
       <button type="button" onClick={splitAtPlayhead} title="Split at playhead (S)">

@@ -6,7 +6,7 @@ from src.adapters.output.renderer.srt_builder import build_srt
 from src.domain.enums.caption_style_enum import CaptionStyle
 from src.domain.enums.overlay_style_enum import OverlayStyle
 from src.domain.models.edl import Captions, Edl, Music, Overlay
-from src.domain.models.render import CropMove
+from src.domain.models.render import CropMove, ZoomCue
 from src.domain.models.speech import TimeSpan
 from src.domain.models.transcript import Word
 from src.domain.services.render_planning import plan_render
@@ -119,3 +119,49 @@ def test_tracked_crop_is_a_step_function_of_output_time():
     graph = args[args.index("-filter_complex") + 1]
     assert "crop=608:1080:'80+1152*gte(t,2.500)-1152*gte(t,4.000)':'0'," in graph
     assert graph.count("-i") == 0 and args.count("-i") == 2  # still one input per range
+
+
+def test_zooms_scale_the_framed_picture_per_frame_and_crop_it_back():
+    zoomed = plan().model_copy(
+        update={
+            "zooms": [
+                ZoomCue(start=0, end=1.5, scale=1.12, ramp=1),
+                ZoomCue(start=2, end=3, scale=1.3, ramp=0),
+            ]
+        }
+    )
+    args = build_command(zoomed, Path("s"), None, Path("a"), Path("f"), Path("o"))
+    graph = args[args.index("-filter_complex") + 1]
+    factor = (
+        "(1+0.1200*gte(t,0.000)*lt(t,1.500)*clip((t-0.000)/1.000,0,1)"
+        "+0.3000*gte(t,2.000)*lt(t,3.000))"
+    )
+    assert (
+        f"scale=1080:1920:flags=lanczos,scale=w='2*trunc(1080*{factor}/2)'"
+        f":h='2*trunc(1920*{factor}/2)':eval=frame:flags=bicubic"
+        f",crop=1080:1920:x='(2*trunc(1080*{factor}/2)-1080)/2'"
+        f":y='(2*trunc(1920*{factor}/2)-1920)/2',"
+        "setsar=1,subtitles="
+    ) in graph  # centred on the frame; captions come after the zoom, so they stay put
+
+
+def test_no_zooms_no_extra_filters():
+    args = build_command(plan(), Path("s"), None, Path("a"), Path("f"), Path("o"))
+    assert "eval=frame" not in args[args.index("-filter_complex") + 1]
+
+
+def test_streamer_mode_overlays_the_facecam_under_the_captions():
+    from src.domain.models.edl import Facecam
+
+    edl = Edl(
+        ranges=[TimeSpan(start=10, end=12)],
+        captions=Captions(words=[]),
+        facecam=Facecam(x=0.9, y=0.9, scale=4),
+    )
+    args = build_command(
+        plan_render(edl, 1920, 1080), Path("s"), None, Path("a"), Path("f"), Path("o")
+    )
+    graph = args[args.index("-filter_complex") + 1]
+    assert "[cut]split=2[main][cam]" in graph
+    assert "[cam]crop=360:270:1548:810,scale=432:324:flags=lanczos,setsar=1[face]" in graph
+    assert "[game][face]overlay=605:1553,setsar=1,subtitles=" in graph

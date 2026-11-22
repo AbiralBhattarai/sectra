@@ -4,6 +4,8 @@ from src.domain.models.speech import TimeSpan
 
 #: Shortest range the editor can produce; anything smaller is a slip of the mouse.
 MIN_RANGE_SECONDS = 0.1
+#: More would make the per-frame zoom expression unwieldy.
+MAX_ZOOMS = 200
 
 
 def validate_edl(edl: Edl, source_duration: float) -> None:
@@ -25,11 +27,21 @@ def validate_edl(edl: Edl, source_duration: float) -> None:
             raise AppValidationException(f"Overlay {index + 1} has no text")
         if overlay.end - overlay.start < MIN_RANGE_SECONDS:
             raise AppValidationException(f"Overlay {index + 1} ends before it starts")
+    if len(edl.zooms) > MAX_ZOOMS:
+        raise AppValidationException(f"A clip can have at most {MAX_ZOOMS} zooms")
+    previous_zoom_end = 0.0
+    for index, zoom in enumerate(edl.zooms):
+        if zoom.end - zoom.start < MIN_RANGE_SECONDS:
+            raise AppValidationException(f"Zoom {index + 1} ends before it starts")
+        if zoom.start < previous_zoom_end - 1e-6:
+            raise AppValidationException(f"Zoom {index + 1} overlaps or precedes the one before")
+        previous_zoom_end = zoom.end
     if edl.tracking is not None:
         shots = edl.tracking.shots
         if not shots:
             raise AppValidationException("Face tracking has no shots")
-        if abs(shots[0].start - edl.tracking.span.start) > 1e-6:
+        # Millisecond tolerance: times are rounded to 3 decimals in places.
+        if abs(shots[0].start - edl.tracking.span.start) > 1e-3:
             raise AppValidationException("The first shot must start where tracking does")
         if any(b.start <= a.start for a, b in zip(shots, shots[1:], strict=False)):
             raise AppValidationException("Shots must be in order")

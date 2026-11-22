@@ -1,10 +1,13 @@
+import json
 import shutil
 from collections.abc import AsyncIterator
 from concurrent.futures import Executor
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from src.domain.enums.video_file_enum import VideoFile
+from src.domain.services.outbox_naming import folder_name, outbox_stem, unique_stem
 from src.utils.concurrency import run_blocking
 
 #: Upload chunks are buffered to this size before each (threaded) disk write.
@@ -13,13 +16,19 @@ _WRITE_BUFFER = 4 * 1024 * 1024
 
 class LocalFsStorageAdapter:
     """Lays files out as ``<root>/videos/<video_id>/<file>`` and ``<root>/music/<name>``;
-    music not uploaded there is looked up in the read-only built-in library."""
+    music not uploaded there is looked up in the read-only built-in library. Clips
+    ready to post go to ``<outbox>/<video title> [<id prefix>]/<rank> <caption>.mp4``."""
 
     def __init__(
-        self, root: Path, executor: Executor, default_music_dir: Path | None = None
+        self,
+        root: Path,
+        executor: Executor,
+        default_music_dir: Path | None = None,
+        outbox_dir: Path | None = None,
     ) -> None:
         self._videos_root = root / "videos"
         self._music_root = root / "music"
+        self._outbox_root = outbox_dir or root / "outbox"
         self._default_music_root = default_music_dir
         self._executor = executor
 
@@ -50,6 +59,51 @@ class LocalFsStorageAdapter:
         directory = self._videos_root / str(video_id) / "tracking"
         directory.mkdir(parents=True, exist_ok=True)
         return directory / f"{job_id}.json"
+
+    async def write_outbox(
+        self,
+        video_id: UUID,
+        video_title: str,
+        rank: int,
+        caption: str,
+        video: Path,
+        sidecar: dict[str, Any],
+    ) -> Path:
+        def write() -> Path:
+            folder = self._outbox_root / f"{folder_name(video_title)} [{str(video_id)[:8]}]"
+            folder.mkdir(parents=True, exist_ok=True)
+            taken = {p.stem for p in folder.iterdir() if p.suffix in (".mp4", ".json")}
+            stem = unique_stem(outbox_stem(rank, caption, fallback=sidecar.get("title", "")), taken)
+            target = folder / f"{stem}.mp4"
+            partial = folder / f"{stem}.mp4.partial"
+            shutil.copyfile(video, partial)
+            partial.replace(target)
+            notes = folder / f"{stem}.json.partial"
+            notes.write_text(json.dumps(sidecar, ensure_ascii=False, indent=2), encoding="utf-8")
+            notes.replace(folder / f"{stem}.json")
+            return target
+
+        return await run_blocking(self._executor, write)
+
+    async def read_outbox_sidecar(self, video_id: UUID, export_id: UUID) -> dict[str, Any] | None:
+        suffix = f"[{str(video_id)[:8]}]"
+
+        def read() -> dict[str, Any] | None:
+            if not self._outbox_root.is_dir():
+                return None
+            for folder in self._outbox_root.iterdir():
+                if not (folder.is_dir() and folder.name.endswith(suffix)):
+                    continue
+                for sidecar in folder.glob("*.json"):
+                    try:
+                        data = json.loads(sidecar.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        continue  # being rewritten by the poster: next poll
+                    if data.get("export_id") == str(export_id):
+                        return data
+            return None
+
+        return await run_blocking(self._executor, read)
 
     async def save_music(self, name: str, chunks: AsyncIterator[bytes]) -> str:
         self._music_root.mkdir(parents=True, exist_ok=True)

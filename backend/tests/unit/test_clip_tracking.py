@@ -110,3 +110,62 @@ async def test_unfinished_result_is_not_found(setup):
     job = await service().request_tracking(clip.id)
     with pytest.raises(NotFoundException):
         await service().tracking_result(job.id)
+
+
+class RecordingExports:
+    def __init__(self):
+        self.calls = []
+
+    async def request_export(self, clip_id, outbox_rank=None):
+        self.calls.append((clip_id, outbox_rank))
+
+
+async def auto_setup(storage, tracks):
+    fakes = Fakes()
+    video = Video(title="talk", duration=200, width=1920, height=1080)
+    await fakes.videos.add(video)
+    clip = make_clip(video, start=50, score=90)
+    clips = InMemoryClipRepository()
+    await clips.replace_for_video(video.id, [clip])
+    exports = RecordingExports()
+    service = ClipTrackingService(
+        clips=clips,
+        videos=fakes.videos,
+        jobs=fakes.jobs,
+        storage=storage,
+        scheduler=fakes.scheduler,
+        tracker=FakeTracker(list(tracks)),
+        min_shot_seconds=1,
+        exports=exports,
+    )
+    return clips, clip, service, exports
+
+
+async def no_progress(_):
+    pass
+
+
+async def test_auto_tracking_applies_the_shots_then_exports_at_its_rank(storage):
+    face = FaceTrack(id=3, first_frame=0, centres=[(0.3, 0.4)] * 50, scores=[1.0] * 50)
+    clips, clip, service, exports = await auto_setup(storage, [face])
+    covering = await service.request_tracking(clip.id)
+
+    job = await service.request_tracking(clip.id, auto_rank=7)
+    assert job.id != covering.id and job.payload["auto_rank"] == 7  # never reused
+
+    await service(job, no_progress)
+
+    tracked = await clips.get(clip.id)
+    assert tracked.edl.tracking is not None and tracked.edl.tracking.enabled
+    assert tracked.edl.tracking.span == TimeSpan(start=48, end=72)
+    assert exports.calls == [(clip.id, 7)]
+
+
+async def test_auto_tracking_without_faces_still_exports_centre_cropped(storage):
+    clips, clip, service, exports = await auto_setup(storage, [])
+    job = await service.request_tracking(clip.id, auto_rank=2)
+
+    await service(job, no_progress)  # no "No faces found" failure
+
+    assert (await clips.get(clip.id)).edl.tracking is None
+    assert exports.calls == [(clip.id, 2)]

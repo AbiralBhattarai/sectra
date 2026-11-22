@@ -29,13 +29,15 @@ class VideoLibraryService:
         self._storage = storage
         self._scheduler = scheduler
 
-    async def add_from_url(self, url: str) -> Video:
-        video = Video(title=url, source_url=url)
+    async def add_from_url(self, url: str, clip_prompt: str = "") -> Video:
+        video = Video(title=url, source_url=url, clip_prompt=_clean(clip_prompt))
         await self._videos.add(video)
         await self._scheduler.submit(Job(type=JobType.INGEST, video_id=video.id))
         return video
 
-    async def add_upload(self, filename: str, chunks: AsyncIterator[bytes]) -> Video:
+    async def add_upload(
+        self, filename: str, chunks: AsyncIterator[bytes], clip_prompt: str = ""
+    ) -> Video:
         name = PurePath(filename)
         extension = name.suffix.lower().lstrip(".")
         if extension not in UPLOAD_EXTENSIONS:
@@ -43,7 +45,7 @@ class VideoLibraryService:
                 f"Unsupported file type '.{extension}'; expected one of "
                 + ", ".join(sorted(UPLOAD_EXTENSIONS))
             )
-        video = Video(title=name.stem or filename)
+        video = Video(title=name.stem or filename, clip_prompt=_clean(clip_prompt))
         try:
             await self._storage.save_upload(video.id, extension, chunks)
         except BaseException:
@@ -69,13 +71,15 @@ class VideoLibraryService:
         await self._videos.delete(video_id)
         await self._storage.delete_video(video_id)
 
-    async def find_clips_again(self, video_id: UUID) -> Job:
+    async def find_clips_again(self, video_id: UUID, clip_prompt: str | None = None) -> Job:
         video = await self._require(video_id)
         if video.status is VideoStatus.PROCESSING:
             raise AppValidationException("The video is still being processed")
         if not self._storage.path(video_id, VideoFile.TRANSCRIPT).is_file():
             raise AppValidationException("The video has no transcript yet")
         video.status = VideoStatus.PROCESSING
+        if clip_prompt is not None:
+            video.clip_prompt = _clean(clip_prompt)
         await self._videos.save(video)
         job = Job(type=JobType.ANALYZE, video_id=video_id)
         await self._scheduler.submit(job)
@@ -93,3 +97,8 @@ class VideoLibraryService:
         if video is None:
             raise NotFoundException(f"Video {video_id} not found")
         return video
+
+
+def _clean(prompt: str) -> str:
+    """Whitespace collapsed; blank means "use the default clip finder"."""
+    return " ".join(prompt.split())

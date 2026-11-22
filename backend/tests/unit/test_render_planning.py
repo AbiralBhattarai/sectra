@@ -4,12 +4,12 @@ import pytest
 
 from src.domain.enums.aspect_ratio_enum import AspectRatio
 from src.domain.enums.caption_style_enum import CaptionStyle
-from src.domain.models.edl import Captions, Crop, Edl, Overlay, Shot, Tracking
+from src.domain.models.edl import Captions, Crop, Edl, Overlay, Shot, Tracking, Zoom
 from src.domain.models.speech import TimeSpan
 from src.domain.models.transcript import Word
 from src.domain.services.caption_pages import hide_time, paginate
 from src.domain.services.edl_timing import output_duration, source_to_output
-from src.domain.services.framing import crop_at, crop_window
+from src.domain.services.framing import crop_at, crop_window, zoom_at
 from src.domain.services.render_planning import plan_render
 
 
@@ -144,3 +144,62 @@ def test_tracking_off_plans_a_still_crop():
     plan = plan_render(tracked(enabled=False), 1920, 1080)
     assert plan.crop_moves == []
     assert len(plan.crops) == 2  # the split screen applies again
+
+
+def zoomed(split=False):
+    return Edl(
+        ranges=[TimeSpan(start=10, end=14), TimeSpan(start=20, end=26)],
+        captions=Captions(words=[]),
+        split_screen=split,
+        zooms=[
+            Zoom(start=10, end=12, scale=1.2, ramp=1),
+            Zoom(start=13, end=21, scale=1.3),  # spans the cut
+            Zoom(start=15, end=18, scale=1.5),  # entirely cut out
+        ],
+    )
+
+
+def test_zoom_at_punches_and_ramps():  # mirrors crop.test.ts "zoomAt"
+    edl = zoomed()
+    assert zoom_at(edl, 9.9) == 1
+    assert zoom_at(edl, 10) == 1
+    assert zoom_at(edl, 10.5) == pytest.approx(1.1)
+    assert zoom_at(edl, 11.5) == pytest.approx(1.2)
+    assert zoom_at(edl, 12) == 1  # end is exclusive
+    assert zoom_at(edl, 13) == 1.3
+    assert zoom_at(zoomed(split=True), 13) == 1
+
+
+def test_plan_moves_zooms_to_output_time_and_drops_cut_ones():
+    plan = plan_render(zoomed(), 1920, 1080)
+    assert [(z.start, z.end, z.scale, z.ramp) for z in plan.zooms] == [
+        (0, 2, 1.2, 1),
+        (3, 5, 1.3, 0),  # source 13-21 → output 3-4 (range 1) + 4-5 (range 2)
+    ]
+    assert plan_render(zoomed(split=True), 1920, 1080).zooms == []
+
+
+def test_pip_box_sits_bottom_right_at_four_by_three():  # mirrors crop.test.ts "pipBox"
+    from src.domain.services.framing import pip_box
+
+    assert pip_box(AspectRatio.VERTICAL) == (605, 1553, 432, 324)
+    assert pip_box(AspectRatio.LANDSCAPE) == (1445, 713, 432, 324)
+
+
+def test_streamer_mode_adds_the_facecam_and_overrides_split_and_tracking():
+    from src.domain.models.edl import Facecam
+
+    edl = tracked().model_copy(update={"facecam": Facecam(x=0.9, y=0.9, scale=4)})
+    plan = plan_render(edl, 1920, 1080)
+
+    assert len(plan.crops) == 1 and plan.crop_moves == []  # gameplay crop stands still
+    assert plan.crops[0].x == crop_window(1920, 1080, edl.aspect, edl.crop)[0]
+    pip = plan.pip
+    assert (pip.x, pip.y, pip.width, pip.height) == (605, 1553, 432, 324)
+    # A 4:3 window of the source (1080 high / 4 → 270), pushed into the corner.
+    assert (pip.source.width, pip.source.height) == (360, 270)
+    assert (pip.source.x, pip.source.y) == (1548, 810)
+
+
+def test_no_facecam_no_pip():
+    assert plan_render(tracked(), 1920, 1080).pip is None

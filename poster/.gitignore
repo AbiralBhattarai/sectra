@@ -1,0 +1,6 @@
+.env
+.venv/
+# Logged-in browser sessions: never commit these.
+profiles/
+logs/
+state.json

@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     worker_name: str = "worker-1"
     #: Jobs one worker runs at once per stream; resource semaphores bound the real work.
     job_concurrency: int = Field(default=4, ge=1)
+    #: Jobs at once on the analysis stream (NORMALIZE … ANALYZE). 1 = one video at a time:
+    #: each runs through every stage before the next starts, while downloads (their own
+    #: stream, JOB_CONCURRENCY) keep going in parallel and line up behind it.
+    analysis_concurrency: int = Field(default=1, ge=1)
     #: Deliveries before a job that keeps crashing the worker is marked failed.
     job_max_attempts: int = Field(default=3, ge=1)
 
@@ -54,6 +58,10 @@ class Settings(BaseSettings):
     stt_provider: Literal["faster_whisper", "openai_compat"] = "faster_whisper"
     #: Whisper size for faster_whisper (tiny/base/small/medium/large-v3), or the API model.
     stt_model: str = "small"
+    #: faster_whisper only: "cuda" needs an NVIDIA GPU (docker-compose.gpu.yaml).
+    stt_device: Literal["cpu", "cuda"] = "cpu"
+    #: faster_whisper only; unset = int8 on the CPU, int8_float16 on the GPU (least VRAM).
+    stt_compute_type: str | None = None
     stt_base_url: str | None = None
     stt_api_key: str | None = None
     #: Chunks transcribed at once: ~1 for local CPU, higher for cloud APIs.
@@ -82,6 +90,27 @@ class Settings(BaseSettings):
     clip_min_seconds: float = Field(default=15, gt=0)
     clip_max_seconds: float = Field(default=60, gt=0)
     clip_max_count: int = Field(default=10, ge=1)
+    #: Clips the LLM is asked for per transcript window; raise it with CLIP_MAX_COUNT.
+    llm_clips_per_window: int = Field(default=3, ge=1, le=10)
+    #: Clips overlapping a better one by more than this (intersection over union) are
+    #: dropped; lower it for more distinct clips.
+    clip_max_overlap: float = Field(default=0.5, ge=0, le=1)
+
+    #: The automatic edit after analysis: zoom-ins on every clip, then face tracking
+    #: (AUTO_TRACK) and a render into the outbox (AUTO_EXPORT).
+    auto_zoom: bool = True
+    auto_track: bool = False
+    auto_export: bool = False
+    #: Finished clips named after their social caption, for posting; default
+    #: ``<DATA_DIR>/outbox``.
+    outbox_dir: Path | None = None
+    #: Where the clip card's Post button posts (the host poster, `poster serve`, does
+    #: the posting), comma-separated.
+    post_platforms: str = "youtube,tiktok,instagram,x"
+
+    @property
+    def post_platform_list(self) -> tuple[str, ...]:
+        return tuple(p.strip().lower() for p in self.post_platforms.split(",") if p.strip())
 
     @model_validator(mode="after")
     def _check_providers(self) -> "Settings":

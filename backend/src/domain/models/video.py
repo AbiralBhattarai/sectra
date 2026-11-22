@@ -20,5 +20,7 @@ class Video(BaseModel):
     duration: float | None = None
     width: int | None = None
     height: int | None = None
+    #: What kind of clips the user wants (added to the clip-finding prompt); "" = default.
+    clip_prompt: str = ""
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

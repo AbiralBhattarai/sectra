@@ -25,6 +25,15 @@ export interface Crop {
   scale: number;
 }
 
+/** Streamer mode: the source region shown in the bottom-right picture-in-picture box
+ * (the face cam) while the main frame shows gameplay. Centre as fractions of the source,
+ * plus zoom; the box's aspect is fixed (4:3). */
+export interface Facecam {
+  x: number;
+  y: number;
+  scale: number;
+}
+
 /** Free-positioned text. Unlike everything else, times are on the clip's output timeline. */
 export interface Overlay {
   text: string;
@@ -63,6 +72,16 @@ export interface Tracking {
   shots: Shot[];
 }
 
+/** A zoom-in on top of the framing, centred on the crop. Source time, like shots. */
+export interface Zoom {
+  start: number;
+  end: number;
+  /** Magnification of the framed picture (1–2). */
+  scale: number;
+  /** Seconds to ease in from 1×; 0 is a hard punch-in. */
+  ramp: number;
+}
+
 export interface Edl {
   aspect: AspectRatio;
   crop: Crop;
@@ -74,6 +93,10 @@ export interface Edl {
   captions: { words: Word[]; style: CaptionStyle };
   overlays: Overlay[];
   music: Music | null;
+  /** Sorted and non-overlapping; ignored with `split_screen`. */
+  zooms: Zoom[];
+  /** Streamer mode; when set, split screen and face tracking are ignored. */
+  facecam?: Facecam | null;
 }
 
 export interface ClipDetail {
@@ -83,6 +106,8 @@ export interface ClipDetail {
   hook: string;
   score: number;
   reason: string;
+  /** Ready-to-post social caption with hashtags. */
+  caption: string;
   start: number;
   end: number;
   created_at: string;

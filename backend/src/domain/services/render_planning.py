@@ -1,17 +1,35 @@
 from src.domain.enums.caption_style_enum import CaptionStyle
 from src.domain.models.edl import Edl
-from src.domain.models.render import CaptionCue, CropBox, CropMove, RenderPlan, TimedText
+from src.domain.models.render import (
+    CaptionCue,
+    CropBox,
+    CropMove,
+    PipBox,
+    RenderPlan,
+    TimedText,
+    ZoomCue,
+)
 from src.domain.services.caption_pages import hide_time, paginate
 from src.domain.services.edl_timing import output_duration, source_to_output
-from src.domain.services.framing import OUTPUT_SIZES, crop_at, crop_window, tracking_on
+from src.domain.services.framing import (
+    OUTPUT_SIZES,
+    crop_at,
+    crop_window,
+    facecam_window,
+    pip_box,
+    streamer_mode,
+    tracking_on,
+)
 
 _MIN_OVERLAY_SECONDS = 0.1
+_MIN_ZOOM_SECONDS = 0.05
 
 
 def plan_render(edl: Edl, source_width: int, source_height: int) -> RenderPlan:
     width, height = OUTPUT_SIZES[edl.aspect]
-    tracking = tracking_on(edl)
-    split = edl.split_screen and not tracking  # tracking wins; the UI keeps them exclusive
+    tracking = tracking_on(edl)  # never in streamer mode
+    # Streamer mode, then tracking, win over the split; the UI keeps them exclusive.
+    split = edl.split_screen and not tracking and not streamer_mode(edl)
     moves = _crop_moves(edl, source_width, source_height) if tracking else []
     first = crop_at(edl, edl.ranges[0].start)
     x, y, crop_width, crop_height = crop_window(
@@ -30,6 +48,8 @@ def plan_render(edl: Edl, source_width: int, source_height: int) -> RenderPlan:
         ranges=edl.ranges,
         crops=crops,
         crop_moves=moves if len(moves) > 1 else [],
+        zooms=[] if split else _zooms(edl),
+        pip=_pip(edl, source_width, source_height),
         width=width,
         height=height,
         duration=duration,
@@ -40,6 +60,15 @@ def plan_render(edl: Edl, source_width: int, source_height: int) -> RenderPlan:
         music_volume=edl.music.volume if edl.music else None,
         duck_music=bool(edl.music and edl.music.duck),
     )
+
+
+def _pip(edl: Edl, source_width: int, source_height: int) -> PipBox | None:
+    if edl.facecam is None:
+        return None
+    sx, sy, sw, sh = facecam_window(source_width, source_height, edl.aspect, edl.facecam)
+    x, y, width, height = pip_box(edl.aspect)
+    source = CropBox(x=sx, y=sy, width=sw, height=sh)
+    return PipBox(source=source, x=x, y=y, width=width, height=height)
 
 
 def _crop_moves(edl: Edl, source_width: int, source_height: int) -> list[CropMove]:
@@ -55,6 +84,17 @@ def _crop_moves(edl: Edl, source_width: int, source_height: int) -> list[CropMov
                 moves.append(CropMove(time=round(elapsed + t - span.start, 3), x=x, y=y))
         elapsed += span.duration
     return moves
+
+
+def _zooms(edl: Edl) -> list[ZoomCue]:
+    """``edl.zooms`` moved to output time; parts in cut-out stretches disappear."""
+    cues = []
+    for zoom in edl.zooms:
+        start = round(source_to_output(zoom.start, edl.ranges), 3)
+        end = round(source_to_output(zoom.end, edl.ranges), 3)
+        if end - start >= _MIN_ZOOM_SECONDS:
+            cues.append(ZoomCue(start=start, end=end, scale=zoom.scale, ramp=zoom.ramp))
+    return cues
 
 
 def _cues(edl: Edl, style: CaptionStyle) -> list[CaptionCue]:

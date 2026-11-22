@@ -46,6 +46,14 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-default-groups --group worker
 
+# GPU=1 (docker-compose.gpu.yaml) adds the CUDA 12 / cuDNN 9 runtime that CTranslate2 needs
+# for faster-whisper on an NVIDIA GPU (STT_DEVICE=cuda). Off by default: it's ~1.5 GB.
+ARG GPU=0
+RUN if [ "$GPU" = "1" ]; then \
+        uv pip install --python /opt/venv/bin/python nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"; \
+    fi
+ENV LD_LIBRARY_PATH=/opt/venv/lib/python3.12/site-packages/nvidia/cublas/lib:/opt/venv/lib/python3.12/site-packages/nvidia/cudnn/lib
+
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY src ./src

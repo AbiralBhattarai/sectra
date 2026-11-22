@@ -8,7 +8,11 @@ from src.application.prompts.highlight_prompt import (
     ENERGY_MARK,
     HIGHLIGHT_SCHEMA,
     RANK_SCHEMA,
+    RANK_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
     rank_prompt,
+    rank_system_prompt,
+    system_prompt,
     user_prompt,
 )
 from src.application.services.highlight_analysis_service import HighlightAnalysisService
@@ -33,7 +37,14 @@ class InMemoryClipRepository:
         return sorted(self.by_video.get(video_id, []), key=lambda c: -c.score)
 
     async def get(self, clip_id):
-        return next((c for cs in self.by_video.values() for c in cs if c.id == clip_id), None)
+        clip = next((c for cs in self.by_video.values() for c in cs if c.id == clip_id), None)
+        return clip.model_copy(deep=True) if clip else None
+
+    async def save(self, clip):
+        for clips in self.by_video.values():
+            for index, existing in enumerate(clips):
+                if existing.id == clip.id:
+                    clips[index] = clip.model_copy(deep=True)
 
 
 class ScriptedLLM:
@@ -58,13 +69,14 @@ class ScriptedLLM:
         return [c for c in self.calls if c[0] is RANK_SCHEMA]
 
 
-def clip(start, end, rating=7, title="A moment"):
+def clip(start, end, rating=7, title="A moment", caption="Watch this #fyp"):
     return {
         "start_segment": start,
         "end_segment": end,
         "title": title,
         "hook": "hook",
         "reason": "why",
+        "caption": caption,
         "hook_strength": rating,
         "emotion": rating,
         "payoff": rating,
@@ -92,7 +104,7 @@ async def write_transcript(storage, video, segments):
     await storage.write_text(video.id, VideoFile.TRANSCRIPT, transcript(segments).model_dump_json())
 
 
-def service(videos, storage, clips, llm, window=300):
+def service(videos, storage, clips, llm, window=300, **options):
     return HighlightAnalysisService(
         videos=videos,
         storage=storage,
@@ -100,8 +112,9 @@ def service(videos, storage, clips, llm, window=300):
         llm=llm,
         min_seconds=15,
         max_seconds=60,
-        max_count=10,
+        max_count=options.pop("max_count", 10),
         window_seconds=window,
+        **options,
     )
 
 
@@ -264,3 +277,92 @@ async def test_loudness_marker_never_reaches_titles_or_hooks(storage, setup):
 
     [stored] = clips.by_video[video.id]
     assert (stored.title, stored.hook) == ("Big moment", "Yes! Yes!")
+
+
+async def test_caption_is_kept_and_zooms_added_when_asked(storage, setup):
+    videos, video, clips = setup
+    await write_transcript(storage, video, evenly(10))
+    llm = ScriptedLLM({"clips": [clip(1, 3, caption="  He said WHAT #fyp ")]})
+
+    await run(service(videos, storage, clips, llm, auto_zoom=True), video)
+
+    [stored] = clips.by_video[video.id]
+    assert stored.caption == "He said WHAT #fyp"
+    assert stored.edl.zooms and stored.edl.zooms[0].start == stored.start
+
+
+async def test_more_clips_than_the_ranking_pass_takes(storage, setup):
+    videos, video, clips = setup
+    await write_transcript(storage, video, evenly(60))  # 600 s of 10 s segments
+    # 25 distinct 20 s candidates; rubric falls every third so the order is known.
+    answers = [clip(2 * i, 2 * i + 1, rating=10 - i // 3, title=f"c{i}") for i in range(25)]
+    llm = ScriptedLLM({"clips": answers}, {"ranking": list(range(1, 21))})
+
+    await run(service(videos, storage, clips, llm, window=900, max_count=25), video)
+
+    _, _, ranked_prompt = llm.rank_calls()[0]
+    assert "#20 " in ranked_prompt and "#21 " not in ranked_prompt
+    stored = clips.by_video[video.id]
+    assert len(stored) == 25
+    ranked_floor = min(c.score for c in stored if int(c.title[1:]) < 20)
+    assert all(c.score <= ranked_floor for c in stored if int(c.title[1:]) >= 20)
+
+
+class RecordingAutoEdit:
+    def __init__(self):
+        self.tracking = []
+        self.exports = []
+
+    async def request_tracking(self, clip_id, auto_rank=None):
+        self.tracking.append((clip_id, auto_rank))
+
+    async def request_export(self, clip_id, outbox_rank=None):
+        self.exports.append((clip_id, outbox_rank))
+
+
+async def test_clips_are_handed_on_best_first(storage, setup):
+    videos, video, clips = setup
+    await write_transcript(storage, video, evenly(20))
+    answers = {"clips": [clip(0, 2, 9, "A"), clip(6, 8, 6, "B")]}
+
+    auto = RecordingAutoEdit()
+    llm = ScriptedLLM(answers, {"ranking": [2, 1]})
+    await run(service(videos, storage, clips, llm, tracking=auto), video)
+    by_title = {c.id: c.title for c in clips.by_video[video.id]}
+    assert [(by_title[i], rank) for i, rank in auto.tracking] == [("B", 1), ("A", 2)]
+    assert auto.exports == []
+
+    auto = RecordingAutoEdit()
+    llm = ScriptedLLM(answers, {"ranking": [1, 2]})
+    await run(service(videos, storage, clips, llm, exports=auto), video)
+    by_title = {c.id: c.title for c in clips.by_video[video.id]}
+    assert [(by_title[i], rank) for i, rank in auto.exports] == [("A", 1), ("B", 2)]
+
+
+def test_without_guidance_the_prompts_are_the_defaults():
+    default = SYSTEM_PROMPT.format(min_seconds=15, max_seconds=60, mark=ENERGY_MARK)
+    assert system_prompt(15, 60) == default
+    assert system_prompt(15, 60, "   \t ") == default
+    assert rank_system_prompt("") == RANK_SYSTEM_PROMPT
+
+
+def test_guidance_goes_before_the_json_instruction():
+    prompt = system_prompt(15, 60, "  funny   fails ")
+    assert '"""funny fails"""' in prompt
+    assert prompt.endswith("Reply with JSON only.")
+    assert "funny fails" in rank_system_prompt("funny fails")
+
+
+async def test_the_videos_clip_prompt_reaches_both_passes(storage, setup):
+    videos, video, clips = setup
+    video.clip_prompt = "rage moments"
+    await videos.save(video)
+    await write_transcript(storage, video, evenly(20))
+    llm = ScriptedLLM(
+        {"clips": [clip(0, 2, 9, "A"), clip(6, 8, 6, "B")]},
+        {"ranking": [1, 2]},
+    )
+
+    await run(service(videos, storage, clips, llm), video)
+
+    assert all("rage moments" in system for _, system, _ in llm.calls)

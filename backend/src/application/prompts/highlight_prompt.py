@@ -7,7 +7,7 @@ from src.domain.models.clip import ClipCandidate
 from src.domain.models.transcript import Segment
 from src.domain.services.virality import rubric_score
 
-#: Asked per window; the overlap between windows lets the best ones compete later.
+#: Asked per window by default; the overlap between windows lets the best ones compete later.
 CLIPS_PER_WINDOW = 3
 #: Marks a transcript line whose audio is among the loudest in the video.
 ENERGY_MARK = "‼"
@@ -47,6 +47,8 @@ the id of the segment it starts in (the hook) and the id of the segment it ends 
 - "title": a punchy title under 60 characters, the way a clip channel would caption it,
 - "hook": the opening line or moment that stops the scroll,
 - "reason": one sentence on why people would watch to the end and share it,
+- "caption": the post caption for TikTok/Reels/Shorts — one curiosity-driven line (no \
+spoilers of the payoff) followed by 3-5 relevant hashtags, under 150 characters,
 - ratings from 0 to 10: "hook_strength", "emotion", "payoff", "standalone", "shareability".
 
 Transcript:
@@ -78,6 +80,7 @@ HIGHLIGHT_SCHEMA = {
                     "title": {"type": "string"},
                     "hook": {"type": "string"},
                     "reason": {"type": "string"},
+                    "caption": {"type": "string"},
                     "hook_strength": _RATING,
                     "emotion": _RATING,
                     "payoff": _RATING,
@@ -90,6 +93,7 @@ HIGHLIGHT_SCHEMA = {
                     "title",
                     "hook",
                     "reason",
+                    "caption",
                     "hook_strength",
                     "emotion",
                     "payoff",
@@ -118,6 +122,7 @@ class RatedClip(BaseModel):
     title: str
     hook: str
     reason: str
+    caption: str = ""
     hook_strength: int = Field(ge=0, le=10)
     emotion: int = Field(ge=0, le=10)
     payoff: int = Field(ge=0, le=10)
@@ -132,6 +137,7 @@ class RatedClip(BaseModel):
             title=_unmark(self.title),
             hook=_unmark(self.hook),
             reason=_unmark(self.reason),
+            caption=_unmark(self.caption),
             score=rubric_score(
                 {
                     "hook": self.hook_strength,
@@ -156,17 +162,47 @@ class RankResponse(BaseModel):
     ranking: list[int]
 
 
-def system_prompt(min_seconds: float, max_seconds: float) -> str:
-    return SYSTEM_PROMPT.format(min_seconds=min_seconds, max_seconds=max_seconds, mark=ENERGY_MARK)
+#: Longest user guidance kept (the API caps it too).
+MAX_GUIDANCE_CHARS = 1000
+
+_GUIDANCE = """\
+The user is looking for this kind of clip:
+\"\"\"{guidance}\"\"\"
+Prefer moments that match it, but still rate honestly and skip weak ones."""
+
+_REPLY = "Reply with JSON only."
 
 
-def user_prompt(window: list[Segment], loud: set[int] | None = None) -> str:
+def system_prompt(min_seconds: float, max_seconds: float, guidance: str = "") -> str:
+    """The highlight system prompt. Without ``guidance`` it is exactly the default."""
+    prompt = SYSTEM_PROMPT.format(
+        min_seconds=min_seconds, max_seconds=max_seconds, mark=ENERGY_MARK
+    )
+    return _with_guidance(prompt, guidance)
+
+
+def rank_system_prompt(guidance: str = "") -> str:
+    """The ranking system prompt. Without ``guidance`` it is exactly ``RANK_SYSTEM_PROMPT``."""
+    return _with_guidance(RANK_SYSTEM_PROMPT, guidance)
+
+
+def _with_guidance(prompt: str, guidance: str) -> str:
+    guidance = " ".join(guidance.split())[:MAX_GUIDANCE_CHARS]
+    if not guidance:
+        return prompt
+    body = prompt.removesuffix(_REPLY).rstrip()
+    return f"{body}\n\n{_GUIDANCE.format(guidance=guidance)}\n\n{_REPLY}"
+
+
+def user_prompt(
+    window: list[Segment], loud: set[int] | None = None, count: int = CLIPS_PER_WINDOW
+) -> str:
     loud = loud or set()
     lines = "\n".join(
         f"[{s.id}] {_clock(s.start)} {ENERGY_MARK + ' ' if s.id in loud else ''}{s.text}"
         for s in window
     )
-    return USER_PROMPT.format(count=CLIPS_PER_WINDOW, transcript=lines, mark=ENERGY_MARK)
+    return USER_PROMPT.format(count=count, transcript=lines, mark=ENERGY_MARK)
 
 
 def rank_prompt(candidates: list[tuple[str, float, str]]) -> str:

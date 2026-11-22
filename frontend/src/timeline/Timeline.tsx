@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import { paginate } from "../editor/captions";
+import { updateZoom } from "../editor/crop";
 import { clamp, outputToSource, trimRange } from "../editor/edlOps";
 import { useEditor } from "../editor/store";
 import type { Peaks, Span } from "../editor/types";
@@ -11,6 +12,8 @@ interface Drag {
   index: number;
   edge: "start" | "end";
   time: number;
+  /** Which lane's item is being trimmed. */
+  kind: "range" | "zoom";
 }
 
 /** Renders once the clip is loaded, so the track element exists before it's measured. */
@@ -29,7 +32,8 @@ function TimelineView() {
   const playhead = useEditor((s) => s.playhead);
   const selectedRange = useEditor((s) => s.selectedRange);
   const selectedOverlay = useEditor((s) => s.selectedOverlay);
-  const { edit, seek, selectRange, selectWord, selectOverlay } = useEditor.getState();
+  const selectedZoom = useEditor((s) => s.selectedZoom);
+  const { edit, seek, selectRange, selectWord, selectOverlay, selectZoom } = useEditor.getState();
 
   const trackRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -48,10 +52,12 @@ function TimelineView() {
   }, [clipId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // While dragging a handle, show the trimmed result without recording undo steps.
-  const shown = useMemo(
-    () => (edl && drag ? trimRange(edl, drag.index, drag.edge, drag.time, duration, transcript) : edl),
-    [edl, drag, duration, transcript],
-  );
+  const shown = useMemo(() => {
+    if (!edl || !drag) return edl;
+    return drag.kind === "zoom"
+      ? updateZoom(edl, drag.index, { [drag.edge]: drag.time })
+      : trimRange(edl, drag.index, drag.edge, drag.time, duration, transcript);
+  }, [edl, drag, duration, transcript]);
   const pages = useMemo(
     () => (shown ? paginate(shown.captions.words, shown.captions.style === "none" ? "clean" : shown.captions.style) : []),
     [shown],
@@ -72,11 +78,12 @@ function TimelineView() {
     selectRange(index === -1 ? null : index);
   };
 
-  const onHandleDown = (event: PointerEvent, index: number, edge: "start" | "end") => {
+  const onHandleDown = (event: PointerEvent, index: number, edge: "start" | "end", kind: Drag["kind"] = "range") => {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    selectRange(index);
-    setDrag({ index, edge, time: shown.ranges[index][edge] });
+    if (kind === "zoom") selectZoom(index);
+    else selectRange(index);
+    setDrag({ index, edge, kind, time: (kind === "zoom" ? shown.zooms : shown.ranges)[index][edge] });
   };
   const onHandleMove = (event: PointerEvent) => {
     if (!drag) return;
@@ -85,7 +92,8 @@ function TimelineView() {
     seek(clamp(time, 0, duration));
   };
   const onHandleUp = () => {
-    if (drag) edit((e) => trimRange(e, drag.index, drag.edge, drag.time, duration, transcript));
+    if (drag?.kind === "zoom") edit((e) => updateZoom(e, drag.index, { [drag.edge]: drag.time }));
+    else if (drag) edit((e) => trimRange(e, drag.index, drag.edge, drag.time, duration, transcript));
     setDrag(null);
   };
 
@@ -177,6 +185,35 @@ function TimelineView() {
               </span>
             );
           })}
+        </div>
+        <div className="lane zoom-lane" title="Zoom-ins (drag the edges to retime)">
+          {shown.zooms
+            .map((zoom, index) => ({ zoom, index }))
+            .filter(({ zoom }) => zoom.end > view.start && zoom.start < view.end)
+            .map(({ zoom, index }) => (
+              <span
+                key={index}
+                className={`${zoom.ramp > 0 ? "push" : "punch"}${index === selectedZoom ? " selected" : ""}`}
+                style={{ left: x(zoom.start), width: Math.max(4, x(zoom.end) - x(zoom.start)) }}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  seek(zoom.start);
+                  selectZoom(index);
+                }}
+              >
+                ×{zoom.scale.toFixed(2)}
+                {index === selectedZoom &&
+                  (["start", "end"] as const).map((edge) => (
+                    <i
+                      key={edge}
+                      className={`handle ${edge}`}
+                      onPointerDown={(event) => onHandleDown(event, index, edge, "zoom")}
+                      onPointerMove={onHandleMove}
+                      onPointerUp={onHandleUp}
+                    />
+                  ))}
+              </span>
+            ))}
         </div>
         {shown.tracking?.enabled && (
           <div className="lane shots-lane" title="Face tracking shots (drag the preview to reframe one)">

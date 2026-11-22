@@ -16,7 +16,9 @@ interface Upload {
 }
 
 export function SourcesPanel({ videos, selectedId, onSelect, onAdded, onDeleted }: Props) {
-  const [url, setUrl] = useState("");
+  const [urls, setUrls] = useState("");
+  const [clipPrompt, setClipPrompt] = useState("");
+  const [adding, setAdding] = useState(false);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -30,13 +32,31 @@ export function SourcesPanel({ videos, selectedId, onSelect, onAdded, onDeleted 
     }
   };
 
-  const submitUrl = (event: FormEvent) => {
-    event.preventDefault();
-    void run(async () => {
-      onAdded(await addVideoUrl(url.trim()));
-      setUrl("");
-    });
+  // One URL per line (or separated by spaces). Added one by one, so they queue in order;
+  // lines that fail stay in the box with the reason shown.
+  const submitUrls = (event?: FormEvent) => {
+    event?.preventDefault();
+    const pending = [...new Set(urls.split(/\s+/).map((u) => u.trim()).filter(Boolean))];
+    if (!pending.length || adding) return;
+    setError(null);
+    setAdding(true);
+    void (async () => {
+      const failed: string[] = [];
+      const reasons: string[] = [];
+      for (const url of pending) {
+        try {
+          onAdded(await addVideoUrl(url, clipPrompt));
+        } catch (e) {
+          failed.push(url);
+          reasons.push(`${url}: ${(e as Error).message}`);
+        }
+      }
+      setUrls(failed.join("\n"));
+      setError(reasons.length ? reasons.join("\n") : null);
+      setAdding(false);
+    })();
   };
+  const urlCount = new Set(urls.split(/\s+/).filter(Boolean)).size;
 
   const upload = (files: FileList | null) => {
     for (const file of files ?? []) {
@@ -47,7 +67,7 @@ export function SourcesPanel({ videos, selectedId, onSelect, onAdded, onDeleted 
       setUploads((current) => [...current, { name: file.name, progress: 0 }]);
       void run(async () => {
         try {
-          onAdded(await uploadVideo(file, setProgress));
+          onAdded(await uploadVideo(file, setProgress, clipPrompt));
         } finally {
           setUploads((current) => current.filter((u) => u.name !== file.name));
         }
@@ -88,16 +108,31 @@ export function SourcesPanel({ videos, selectedId, onSelect, onAdded, onDeleted 
         </label>
       </header>
 
-      <form className="add-url" onSubmit={submitUrl}>
-        <input
-          type="url"
-          placeholder="Paste a YouTube URL"
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-          required
+      <form className="add-url" onSubmit={submitUrls}>
+        <textarea
+          rows={Math.min(6, Math.max(1, urls.split("\n").length))}
+          placeholder="Paste video URLs, one per line"
+          value={urls}
+          onChange={(event) => setUrls(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) submitUrls();
+          }}
+          disabled={adding}
         />
-        <button type="submit">Add</button>
+        <button type="submit" disabled={adding || urlCount === 0} title="Ctrl/⌘ + Enter">
+          {adding ? "Adding…" : urlCount > 1 ? `Add ${urlCount}` : "Add"}
+        </button>
       </form>
+      <textarea
+        className="clip-prompt"
+        rows={2}
+        maxLength={1000}
+        placeholder="What kind of clips? (optional, e.g. funny fails)"
+        title="Added to the clip finder's prompt for the videos you add. Empty = find the most viral moments."
+        value={clipPrompt}
+        onChange={(event) => setClipPrompt(event.target.value)}
+        aria-label="What kind of clips to find"
+      />
       {error && <p className="error">{error}</p>}
 
       <ul className="video-list">

@@ -1,12 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mediaUrl } from "../api/client";
 import { CaptionOverlay } from "./CaptionOverlay";
-import { cropAt, croppedVideoStyle, cropWindow, panCrop, setCropAt, trackingOn } from "./crop";
+import {
+  cropAt,
+  croppedVideoStyle,
+  cropWindow,
+  facecamWindow,
+  panCrop,
+  pipBox,
+  OUTPUT_SIZES,
+  setCropAt,
+  streamerMode,
+  trackingOn,
+  zoomAt,
+} from "./crop";
 import { MusicPlayer } from "./MusicPlayer";
 import { OverlayLayer } from "./OverlayLayer";
 import { nextPlayable, outputDuration, sourceToOutput } from "./edlOps";
 import { useEditor } from "./store";
-import { ASPECTS, type Crop } from "./types";
+import { ASPECTS, type Crop, type Facecam } from "./types";
 
 export function Preview() {
   const video = useEditor((s) => s.video)!;
@@ -24,6 +36,10 @@ export function Preview() {
   const [draftCrop, setDraftCrop] = useState<Crop | null>(null);
   const draftTime = useRef(0);
   const drag = useRef<{ x: number; y: number; crop: Crop } | null>(null);
+  // Streamer mode: the facecam box's own drag/zoom draft, committed the same way.
+  const pipCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [draftCam, setDraftCam] = useState<Facecam | null>(null);
+  const camDrag = useRef<{ x: number; y: number; cam: Facecam } | null>(null);
 
   const aspect = ASPECTS[edl.aspect];
   const crop = draftCrop ?? cropAt(edl, playhead);
@@ -34,14 +50,26 @@ export function Preview() {
   const sourceWidth = video.width ?? 16;
   const sourceHeight = video.height ?? 9;
   // Split screen: each half of the source fills half of the frame, left half on top.
-  const split = edl.split_screen && !trackingOn(edl); // as the render: tracking wins
+  // As the render: streamer mode, then tracking, win over the split.
+  const streamer = streamerMode(edl);
+  const split = edl.split_screen && !trackingOn(edl) && !streamer;
   const pane = split
     ? { width: frame.width, height: frame.height / 2, sourceWidth: sourceWidth / 2, aspect: aspect * 2 }
     : { width: frame.width, height: frame.height, sourceWidth, aspect };
   const rect = cropWindow(pane.sourceWidth, sourceHeight, pane.aspect, crop);
+  // Zoom-ins scale the framed picture about the pane's centre, as the render does.
+  const zoom = zoomAt(edl, playhead);
   // Read by the canvas loop, which draws the right half into the bottom pane.
   const rightRect = useRef(rect);
   rightRect.current = { ...rect, x: rect.x + pane.sourceWidth };
+  // Streamer mode: the facecam box (frame pixels) and the source window drawn into it.
+  const cam = draftCam ?? edl.facecam ?? null;
+  const [outWidth] = OUTPUT_SIZES[edl.aspect];
+  const box = pipBox(edl.aspect);
+  const toFrame = frame.width / outWidth;
+  const pip = { x: box.x * toFrame, y: box.y * toFrame, width: box.width * toFrame, height: box.height * toFrame };
+  const camRect = useRef(rect);
+  if (cam) camRect.current = facecamWindow(sourceWidth, sourceHeight, edl.aspect, cam);
 
   useLayoutEffect(() => {
     const element = areaRef.current!;
@@ -95,6 +123,52 @@ export function Preview() {
     return () => cancelAnimationFrame(handle);
   }, [split]);
 
+  // Streamer mode: the facecam box is a canvas fed from the same <video>, like the split.
+  useEffect(() => {
+    if (!streamer) return;
+    const media = videoRef.current!;
+    let handle = 0;
+    const draw = () => {
+      const canvas = pipCanvasRef.current;
+      if (canvas && media.readyState >= media.HAVE_CURRENT_DATA) {
+        const { x, y, width, height } = camRect.current;
+        canvas.getContext("2d")!.drawImage(media, x, y, width, height, 0, 0, canvas.width, canvas.height);
+      }
+      handle = requestAnimationFrame(draw);
+    };
+    handle = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(handle);
+  }, [streamer]);
+
+  // Dragging inside the box pans the facecam's source window (not the gameplay crop).
+  const onCamDown = (event: PointerEvent) => {
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    camDrag.current = { x: event.clientX, y: event.clientY, cam: cam! };
+  };
+  const onCamMove = (event: PointerEvent) => {
+    event.stopPropagation();
+    if (!camDrag.current || !video.width || !video.height) return;
+    const { x, y, cam: start } = camDrag.current;
+    const moved = panCrop(
+      start,
+      event.clientX - x,
+      event.clientY - y,
+      pip.width,
+      pip.height,
+      sourceWidth,
+      sourceHeight,
+      box.width / box.height,
+    );
+    setDraftCam({ ...start, x: moved.x, y: moved.y });
+  };
+  const commitCam = (event?: { stopPropagation: () => void }) => {
+    event?.stopPropagation();
+    camDrag.current = null;
+    if (draftCam) edit((e) => ({ ...e, facecam: draftCam }));
+    setDraftCam(null);
+  };
+
   const onPointerDown = (event: PointerEvent) => {
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { x: event.clientX, y: event.clientY, crop };
@@ -126,14 +200,16 @@ export function Preview() {
           title="Drag to reframe"
         >
           <div className="pane" style={{ height: pane.height }}>
-            <video
-              ref={videoRef}
-              src={mediaUrl(video.id, "source.mp4")}
-              style={croppedVideoStyle(sourceWidth, sourceHeight, rect)}
-              preload="auto"
-              onLoadedMetadata={() => seek(edl.ranges[0].start)}
-              onClick={togglePlay}
-            />
+            <div className="zoomer" style={zoom === 1 ? undefined : { transform: `scale(${zoom})` }}>
+              <video
+                ref={videoRef}
+                src={mediaUrl(video.id, "source.mp4")}
+                style={croppedVideoStyle(sourceWidth, sourceHeight, rect)}
+                preload="auto"
+                onLoadedMetadata={() => seek(edl.ranges[0].start)}
+                onClick={togglePlay}
+              />
+            </div>
           </div>
           {split && (
             <canvas
@@ -142,6 +218,19 @@ export function Preview() {
               style={{ height: pane.height }}
               width={Math.round(pane.width * devicePixelRatio)}
               height={Math.round(pane.height * devicePixelRatio)}
+            />
+          )}
+          {streamer && (
+            <canvas
+              ref={pipCanvasRef}
+              className="pip"
+              style={{ left: pip.x, top: pip.y, width: pip.width, height: pip.height }}
+              width={Math.round(pip.width * devicePixelRatio)}
+              height={Math.round(pip.height * devicePixelRatio)}
+              title="Drag to put the streamer's face in the box"
+              onPointerDown={onCamDown}
+              onPointerMove={onCamMove}
+              onPointerUp={commitCam}
             />
           )}
           <CaptionOverlay />
@@ -172,6 +261,21 @@ export function Preview() {
             onKeyUp={commitCrop}
           />
         </label>
+        {cam && (
+          <label className="zoom" title="Zoom of the facecam box">
+            Cam zoom
+            <input
+              type="range"
+              min={1}
+              max={8}
+              step={0.1}
+              value={cam.scale}
+              onChange={(event) => setDraftCam({ ...cam, scale: Number(event.target.value) })}
+              onPointerUp={() => commitCam()}
+              onKeyUp={() => commitCam()}
+            />
+          </label>
+        )}
       </div>
     </div>
   );

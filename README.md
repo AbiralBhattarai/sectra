@@ -88,6 +88,52 @@ make down                 # stop (data is kept)
 The first transcription downloads the Whisper model (~500 MB for `small`) into a
 Docker volume, so it is slower than later runs.
 
+### Windows (NVIDIA GPU)
+
+`make whisper` needs Apple Silicon, so on Windows Whisper runs inside the worker
+container on CUDA instead. Windows usually has no `make`; the plain commands are below
+(PowerShell, from the repo root).
+
+1. Install Docker Desktop (WSL 2 backend) and a current NVIDIA driver; `nvidia-smi`
+   should list your GPU.
+2. Install [Ollama](https://ollama.com) and create the 8k model (see *Choosing the LLM*):
+   ```powershell
+   ollama pull qwen2.5:7b
+   "FROM qwen2.5:7b`nPARAMETER num_ctx 8192" | Out-File -Encoding ascii Modelfile
+   ollama create qwen2.5:7b-8k -f Modelfile
+   ```
+3. Configure:
+   ```powershell
+   Copy-Item .env.example .env
+   Copy-Item docker-compose.gpu.yaml docker-compose.override.yaml   # GPU for the worker
+   ```
+   and in `.env`:
+   ```env
+   STT_PROVIDER=faster_whisper
+   STT_MODEL=small            # or medium / large-v3 if your GPU has the memory
+   STT_DEVICE=cuda
+   STT_CONCURRENCY=1
+   LLM_MODEL=qwen2.5:7b-8k
+   # optional: keep videos on a roomier drive
+   # SECTRA_DATA_DIR=D:/sectra-data
+   ```
+4. Start it:
+   ```powershell
+   python scripts/fetch_music.py   # optional, one-time: built-in music library
+   docker compose up -d --build
+   ```
+
+| `make` target | Plain command                                              |
+| ------------- | ---------------------------------------------------------- |
+| `make up`     | `docker compose up -d --build`                             |
+| `make down`   | `docker compose down`                                      |
+| `make logs`   | `docker compose logs -f api worker`                        |
+| `make music`  | `python scripts/fetch_music.py`                            |
+| `make test`   | `docker compose up -d postgres redis; cd backend; uv run pytest` |
+| `make poster` | `cd poster; uv run poster serve`                           |
+
+After changing `.env`, restart the worker with `docker compose up -d worker`.
+
 ## Choosing the LLM
 
 All provider settings come from `.env`. Restart the worker after changing them
@@ -179,6 +225,19 @@ STT_CONCURRENCY=4
 For long videos, use the GPU service or a cloud provider. Set `STT_LANGUAGE=en` (or
 another ISO code) to skip language detection.
 
+### Local on an NVIDIA GPU, inside Docker (Windows/Linux)
+
+Same `faster_whisper` provider, on CUDA. Copy `docker-compose.gpu.yaml` to
+`docker-compose.override.yaml` (gitignored; compose loads it automatically), then
+`docker compose up -d --build`:
+
+```env
+STT_PROVIDER=faster_whisper
+STT_MODEL=small
+STT_DEVICE=cuda
+STT_CONCURRENCY=1
+```
+
 ## How clips are picked
 
 The LLM reads the transcript in overlapping windows. Lines where the audio is among the
@@ -217,6 +276,90 @@ commercially too, with no attribution. They come from:
 The manifest records each track's exact source page and license. Moods are a best
 guess from titles and albums. Tracks you upload are stored in `data/music/` and are
 listed after the built-in ones.
+
+## Posting to social media
+
+`poster/` uploads finished clips to YouTube, TikTok, Instagram, X and Facebook. It runs
+**on the host, not in Docker**, and drives your installed Google Chrome with Playwright.
+It's a separate uv project; `uv` is the only requirement.
+
+**Sectra only renders; the poster uploads.** The Post button on a clip card and the
+automatic edit both write an `.mp4` plus a `.json` sidecar into the outbox
+(`<data dir>/outbox/<video> [<id>]/`). Nothing is posted until a poster process
+picks it up, so if a card sits on "… waiting", check that the poster is running.
+
+### Setup (once)
+
+```powershell
+cd poster
+Copy-Item .env.example .env      # cp on macOS/Linux
+```
+
+In `poster/.env`:
+
+- `OUTBOX_DIR`: must be the same folder Sectra writes to. With the default data dir
+  it is `../data/outbox`; with `SECTRA_DATA_DIR=D:/sectra-data` it is
+  `D:/sectra-data/outbox`.
+- `PLATFORMS`: where the poster may post (default `youtube,tiktok,instagram,x`; add
+  `facebook` to use it).
+- `BROWSER_CHANNEL=chrome` uses your installed Chrome. If Chrome is somewhere unusual,
+  set `CHROME_PATH`. Without Chrome, set `chromium` and run
+  `uv run playwright install chromium`.
+
+Which platforms the **Post button** sends to is set separately, in the root `.env`
+(`POST_PLATFORMS`).
+
+### Logging in
+
+Each platform gets its own Chrome profile in `poster/profiles/<platform>` (gitignored).
+You log in by hand once, and every later upload reuses that session:
+
+```powershell
+uv run poster login youtube
+uv run poster login tiktok
+uv run poster login instagram
+uv run poster login x
+```
+
+1. A normal Chrome window opens on the sign-in page. It's a separate profile, so it
+   doesn't touch your everyday Chrome.
+2. Sign in as usual (2FA and "is this you?" checks included) with the account or channel
+   you want to post from.
+3. **Close the window.** The command waits for that, then prints `Saved the … session`.
+
+Check the logins without publishing anything:
+
+```powershell
+uv run poster status                              # queue, today's count, paused platforms
+uv run poster run --dry-run --platform youtube    # fills in an upload, doesn't publish
+```
+
+### Running it
+
+Keep one of these running in its own terminal:
+
+| Command                   | Posts                                                                   |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `uv run poster serve`     | Clips sent with the **Post** button, right away (checks every 5 s), to each platform in the clip's list. Add `--dry-run` to test. |
+| `uv run poster run`       | The automatic outbox (`AUTO_EXPORT`), on a schedule: `POSTS_PER_DAY` (10) per platform spread over `ACTIVE_HOURS` (9-23). `--once` does one pass. Skips Post-button clips. |
+
+Uploads run one after another, so 10 clips to 4 platforms means 40 uploads. The clip
+card shows a chip per platform: ✓ posted (with a link), … waiting, ✗ gave up, 🔒 needs
+a login.
+
+### When something goes wrong
+
+- **A card stays on "waiting":** nothing is posting. Start `uv run poster serve`.
+- **🔒 / a platform is paused:** the site showed a login or captcha page. The poster
+  doesn't try to get around these; it pauses that platform. Run
+  `uv run poster login <platform>` again, which also un-pauses it.
+- **✗ gave up:** an upload failed `MAX_FAILURES` (3) times after it had started.
+  Failures back off (serve: 1 min, doubling; run: 15 min). Errors before an upload starts,
+  like a slow site or Chrome failing to launch, aren't counted.
+- Logs are in `poster/logs/poster.log`, and failed steps save a screenshot there. Sites
+  change their pages, so the selectors at the top of `poster/src/poster/platforms/*.py`
+  sometimes need updating.
+- Only post content you have the rights to, and keep within each platform's rules.
 
 ## Configuration reference
 
@@ -353,7 +496,10 @@ fresh, run `docker compose down -v && rm -rf data`.
   latest yt-dlp). For videos that need a login, export your browser cookies to
   `data/cookies.txt` and set `YTDLP_COOKIES_FILE=/data/cookies.txt`.
 - **Transcription is slow:** check that `make whisper` is running and `.env` points at
-  it (see *Choosing speech-to-text*). On the CPU path, use a smaller `STT_MODEL`.
+  it (see *Choosing speech-to-text*). On Windows/Linux with an NVIDIA GPU, check that
+  `docker-compose.override.yaml` exists and `STT_DEVICE=cuda` is set. On the CPU path,
+  use a smaller `STT_MODEL`.
+- **Clips never get posted:** the poster isn't running. See *Posting to social media*.
 - **"Video has no audio track":** clips are found from speech, so silent videos are
   rejected.
 

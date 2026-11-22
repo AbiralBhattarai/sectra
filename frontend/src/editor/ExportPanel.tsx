@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listExports, requestExport } from "../api/client";
+import { listExports, requestExport, updateClip } from "../api/client";
 import type { Export } from "../api/types";
 import { useJobEvents } from "../api/useJobEvents";
 import { useEditor } from "./store";
@@ -40,6 +40,7 @@ export function ExportPanel() {
   const saved = saveState === "saved";
   return (
     <div className="tab-body">
+      <CaptionField />
       <button type="button" onClick={start} disabled={!saved}>
         Export MP4 + captions
       </button>
@@ -78,5 +79,42 @@ export function ExportPanel() {
       </ul>
       {exports.length === 0 && <p className="placeholder">Renders the clip at 1080p with captions and overlays burned in.</p>}
     </div>
+  );
+}
+
+/** The social caption the outbox file is named after and the poster posts. Saved on blur,
+ * together with the current edit. */
+function CaptionField() {
+  const clip = useEditor((s) => s.clip)!;
+  const [text, setText] = useState(clip.caption);
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  useEffect(() => setText(clip.caption), [clip.id, clip.caption]);
+
+  const save = async () => {
+    const { edl, setSaved } = useEditor.getState();
+    if (!edl || text.trim() === clip.caption) return;
+    setState("saving");
+    try {
+      setSaved(await updateClip(clip.id, edl, text));
+      setState("idle");
+    } catch {
+      setState("error");
+    }
+  };
+
+  return (
+    <label className="caption-field">
+      <span className="stage">
+        Post caption {state === "saving" ? "· saving…" : state === "error" ? "· couldn’t save" : `· ${text.length}/2200`}
+      </span>
+      <textarea
+        rows={3}
+        value={text}
+        maxLength={2200}
+        placeholder="Hook line + #hashtags, used when posting"
+        onChange={(event) => setText(event.target.value)}
+        onBlur={() => void save()}
+      />
+    </label>
   );
 }

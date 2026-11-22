@@ -8,7 +8,24 @@ import type { Edl } from "./types";
 export interface TrackingState {
   status: "tracking" | "failed";
   progress: number;
+  /** Queued, no worker has picked it up yet (busy, or not running). */
+  queued?: boolean;
   error?: string;
+}
+
+/** Resolves once the editor's changes are saved (or saving failed): the server tracks the
+ * clip's *saved* bounds, so a fresh trim must reach it first. */
+export function whenSaved(): Promise<void> {
+  const done = () => ["saved", "error"].includes(useEditor.getState().saveState);
+  if (done()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsubscribe = useEditor.subscribe(() => {
+      if (done()) {
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
 }
 
 /** The "Face tracking" checkbox. Ticking it reuses shots that cover the clip, or runs a
@@ -26,7 +43,7 @@ export function useFaceTracking() {
     const result = await getTracking(jobId);
     const { clip, edit } = useEditor.getState();
     if (clip?.id !== forClip) return;
-    edit((e) => ({ ...e, split_screen: false, tracking: mergeTracking(e.tracking, result) }));
+    edit((e) => ({ ...e, split_screen: false, facecam: null, tracking: mergeTracking(e.tracking, result) }));
     setState(null);
   }, []);
 
@@ -36,9 +53,14 @@ export function useFaceTracking() {
     const forClip = useEditor.getState().clip!.id;
     setState({ status: "tracking", progress: 0 });
     try {
+      await whenSaved();
+      if (useEditor.getState().clip?.id !== forClip) return;
       const job = await requestTracking(forClip);
       if (job.status === "succeeded") await apply(job.id, forClip);
-      else waiting.current = { jobId: job.id, clipId: forClip };
+      else {
+        waiting.current = { jobId: job.id, clipId: forClip };
+        setState({ status: "tracking", progress: job.progress ?? 0, queued: job.status === "queued" });
+      }
     } catch (e) {
       fail((e as Error).message);
     }
@@ -54,7 +76,7 @@ export function useFaceTracking() {
       waiting.current = null;
       fail(event.error ?? "Face tracking failed");
     } else {
-      setState({ status: "tracking", progress: event.progress });
+      setState({ status: "tracking", progress: event.progress, queued: event.status === "queued" });
     }
   });
 
@@ -81,13 +103,15 @@ export function useFaceTracking() {
       stop();
       edit(withoutTracking);
     } else if (edl!.tracking && tracksRanges(edl!.tracking, edl!.ranges)) {
-      edit((e) => ({ ...e, split_screen: false, tracking: { ...e.tracking!, enabled: true } }));
+      edit((e) => ({ ...e, split_screen: false, facecam: null, tracking: { ...e.tracking!, enabled: true } }));
     } else {
       void start();
     }
   };
 
-  return { checked: tracking?.enabled === true || state?.status === "tracking", state, toggle, stop };
+  const streamer = useEditor((s) => s.edl?.facecam != null);
+  const checked = (tracking?.enabled === true && !streamer) || state?.status === "tracking";
+  return { checked, state, toggle, stop };
 }
 
 export const withoutTracking = (e: Edl): Edl =>

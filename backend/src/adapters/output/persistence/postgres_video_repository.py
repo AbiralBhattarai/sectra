@@ -48,6 +48,7 @@ def _to_domain(row: VideoRow) -> Video:
         duration=row.duration,
         width=row.width,
         height=row.height,
+        clip_prompt=row.clip_prompt or "",
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

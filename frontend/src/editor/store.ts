@@ -23,6 +23,7 @@ interface EditorState extends EditorAssets {
   selectedRange: number | null;
   selectedWord: number | null;
   selectedOverlay: number | null;
+  selectedZoom: number | null;
   saveState: SaveState;
   saveError: string | null;
   media: HTMLVideoElement | null;
@@ -38,6 +39,7 @@ interface EditorState extends EditorAssets {
   selectRange: (index: number | null) => void;
   selectWord: (index: number | null) => void;
   selectOverlay: (index: number | null) => void;
+  selectZoom: (index: number | null) => void;
   setSaved: (clip: ClipDetail) => void;
   setSaveState: (state: SaveState, error?: string) => void;
 }
@@ -55,6 +57,7 @@ const EMPTY: Pick<
   | "selectedRange"
   | "selectedWord"
   | "selectedOverlay"
+  | "selectedZoom"
 > = {
   clip: null,
   video: null,
@@ -67,6 +70,7 @@ const EMPTY: Pick<
   selectedRange: null,
   selectedWord: null,
   selectedOverlay: null,
+  selectedZoom: null,
 };
 
 export const useEditor = create<EditorState>()(
@@ -97,6 +101,7 @@ export const useEditor = create<EditorState>()(
           selectedWord: state.selectedWord != null && state.selectedWord < words ? state.selectedWord : null,
           selectedOverlay:
             state.selectedOverlay != null && state.selectedOverlay < next.overlays.length ? state.selectedOverlay : null,
+          selectedZoom: state.selectedZoom != null && state.selectedZoom < next.zooms.length ? state.selectedZoom : null,
         }));
       },
       setMedia: (media) => set({ media }),
@@ -123,6 +128,7 @@ export const useEditor = create<EditorState>()(
       selectRange: (index) => set({ selectedRange: index }),
       selectWord: (index) => set({ selectedWord: index }),
       selectOverlay: (index) => set({ selectedOverlay: index }),
+      selectZoom: (index) => set({ selectedZoom: index }),
       setSaved: (clip) => set({ clip, saveState: "saved", saveError: null }),
       setSaveState: (saveState, error) => set({ saveState, saveError: error ?? null }),
     }),
