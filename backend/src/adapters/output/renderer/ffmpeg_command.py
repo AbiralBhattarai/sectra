@@ -87,7 +87,7 @@ def build_command(
         "-filter_complex", ";".join(filters),
         "-map", "[video]", "-map", audio,
         "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
         "-movflags", "+faststart",
         str(output),
     ]  # fmt: skip

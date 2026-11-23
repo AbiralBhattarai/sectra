@@ -75,7 +75,8 @@ class FfmpegMediaAdapter:
         args = [
             *video, "-i", str(narration),
             "-map", "0:v:0", "-map", "1:a:0", "-t", f"{duration:.3f}",
-            *encode, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(dst),
+            *encode, "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+            "-movflags", "+faststart", str(dst),
         ]  # fmt: skip
         await self._ffmpeg(args, duration, on_progress)
 

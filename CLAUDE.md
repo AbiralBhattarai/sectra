@@ -317,7 +317,7 @@ shared. The frontend filters `GET /api/videos` by `kind` per tab.
 - COMPOSE: black 1080×1920 (`-f lavfi color`, `-tune stillimage`) or a gameplay clip from
   the library (chosen file / random in category / random), random offset, looped if short.
 - Story ANALYZE: `story_parts.split_parts` cuts at pauses into parts ≤
-  `STORY_PART_MAX_SECONDS` (170, under the Shorts/Reels cap) that tile the timeline. Each
+  `STORY_PART_MAX_SECONDS` (140: X without Premium; Reels/Shorts allow 180) that tile the timeline. Each
   part: `Edl.for_span` + title overlay (Part 1: title, else "Part N") + `edl.character` +
   `captions.y` just above the head. One 7B JSON call per 60 lines picks expressions
   (`moods`), merged by `character_timeline.merge_moods`; malformed ⇒ neutral. Parts go to

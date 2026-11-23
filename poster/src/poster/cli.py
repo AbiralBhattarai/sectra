@@ -18,6 +18,7 @@ from poster.config import PLATFORMS, Settings, load_settings
 from poster.platforms import uploader_for
 from poster.platforms.base import ChallengeError, NotLoggedInError, Post, title_from
 from poster.schedule import daily_cap_reached, due_at
+from poster.video_info import mp4_duration, too_long
 
 logger = logging.getLogger("poster")
 
@@ -217,6 +218,14 @@ async def post_one(
         title=title_from(item.caption) or str(item.data.get("title", "")),
     )
     label = f"{platform}: {item.video.parent.name}/{item.video.name}"
+    if reason := too_long(mp4_duration(item.video), platform, settings.max_seconds):
+        # The site would accept the file and then hang on "Sharing…" forever.
+        logger.error("Not posting %s: %s", label, reason)
+        if not dry_run:
+            outbox.record_failure(
+                item, platform, _now(), reason, settings.max_failures, give_up=True
+            )
+        return "failed"
     logger.info("Posting %s", label)
     try:
         async with session(settings, platform) as context:

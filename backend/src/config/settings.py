@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     #: Narrator characters: <dir>/<name>/{base,mouth}/*.svg, blink.svg.
     characters_dir: Path = Path("../assets/characters")
     #: Stories longer than this are split into parts (Shorts/Reels cap at 3 minutes).
-    story_part_max_seconds: float = Field(default=170, ge=30)
+    story_part_max_seconds: float = Field(default=140, ge=30)
 
     #: The Montserrat files the preview uses; libass renders captions with the same ones.
     fonts_dir: Path = Path("../assets/fonts")
