@@ -66,3 +66,8 @@ def test_a_deleted_post_is_recorded_and_never_reposted(tmp_path):
     [item] = outbox.scan(tmp_path)
     assert not outbox.is_open(item, "x", max_failures=3)
     assert [t.platform for t in deleting.targets([item], ("youtube", "x"))] == ["youtube"]
+
+
+def test_tiktok_lists_a_post_by_its_caption_before_the_hashtags():
+    assert deleting.tiktok_title("51 Hours of Work #Dylan #gta") == "51 Hours of Work"
+    assert deleting.tiktok_title("#only #tags") == "#only #tags"

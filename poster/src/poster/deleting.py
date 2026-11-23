@@ -189,36 +189,34 @@ async def _x(page: Page, target: Target, confirm: bool) -> Outcome:
 
 STUDIO_CONTENT = "https://www.tiktok.com/tiktokstudio/content"
 TT_CAPTCHA = "#captcha-verify-container, .captcha_verify_container"
-TT_MENU_LABEL = re.compile(r"more|option|…|\.\.\.", re.I)
+TT_SEARCH = re.compile(r"search", re.I)
 TT_DELETE = re.compile(r"^\s*delete\s*$", re.I)
-#: Scrolls of the content list before giving up on finding a post.
-TT_MAX_SCROLLS = 40
+#: A post row holds its own action buttons (privacy, edit, stats, comments, "⋯").
+TT_ROW_MIN_BUTTONS = 3
 
 _NORMALIZE_JS = (
-    "s => s.toLowerCase().replace(/[^\\p{L}\\p{N}_ ]+/gu, ' ').replace(/\\s+/g, ' ').trim()"
+    "s => s.toLowerCase().replace(/[^\p{L}\p{N}_ ]+/gu, ' ').replace(/\s+/g, ' ').trim()"
 )
 
-#: Marks the post rows whose caption contains the key and returns how many there are. A
-#: row is the hit's first ancestor that sits in a list of look-alike siblings.
-_FIND_ROWS_JS = f"""(key) => {{
+#: Marks the visible rows showing this post and returns how many there are. A hit is a
+#: visible element whose text reads as the post (at least its title, at most its full
+#: caption); its row is the smallest ancestor holding the row's action buttons.
+_FIND_ROWS_JS = f"""([title, caption, minButtons]) => {{
   const norm = {_NORMALIZE_JS};
+  const shows = el => {{
+    const t = norm(el.innerText || '');
+    return t.length > 0 && t.startsWith(title) && caption.startsWith(t);
+  }};
+  const visible = el => el.getClientRects().length > 0;
   document.querySelectorAll('[data-sectra-row]').forEach(e => e.removeAttribute('data-sectra-row'));
-  const hits = [];
-  for (const el of document.querySelectorAll('body *')) {{
-    if (!el.innerText || !norm(el.innerText).includes(key)) continue;
-    if ([...el.children].some(c => c.innerText && norm(c.innerText).includes(key))) continue;
-    hits.push(el);
-  }}
   const rows = new Set();
-  for (const hit of hits) {{
-    let el = hit;
-    while (el.parentElement && el.parentElement !== document.body) {{
-      const same = [...el.parentElement.children].filter(
-        c => c.tagName === el.tagName && c.className === el.className);
-      if (same.length >= 2) break;
-      el = el.parentElement;
+  for (const el of document.querySelectorAll('body *')) {{
+    if (!visible(el) || !shows(el) || [...el.children].some(shows)) continue;
+    let row = el;
+    while (row && row.querySelectorAll('button,[role=button]').length < minButtons) {{
+      row = row.parentElement;
     }}
-    rows.add(el);
+    if (row && row !== document.body) rows.add(row);
   }}
   let i = 0;
   for (const row of rows) row.setAttribute('data-sectra-row', String(i++));
@@ -226,57 +224,64 @@ _FIND_ROWS_JS = f"""(key) => {{
 }}"""
 
 
+def tiktok_title(caption: str) -> str:
+    """What TikTok Studio lists for a post: the caption before its hashtags."""
+    return caption.split("#", 1)[0].strip() or caption.strip()
+
+
 async def _tiktok(page: Page, target: Target, confirm: bool) -> Outcome:
-    key = caption_key(target.caption)
-    if len(key) < 12:
+    title = tiktok_title(target.caption)
+    if len(normalize(title)) < 6:
         return Outcome("skipped", "caption too short to find the post safely")
     if STUDIO_CONTENT not in page.url:
         await page.goto(STUDIO_CONTENT, wait_until="domcontentloaded")
-        await page.wait_for_timeout(5_000)
+        await page.wait_for_timeout(6_000)
     if looks_like_login(page.url):
         raise NotLoggedInError("TikTok redirected to log in")
     if await page.locator(TT_CAPTCHA).count():
         raise ChallengeError("TikTok is showing a captcha")
 
-    count = await _scroll_until_found(page, key)
+    count = await _search(page, title, target.caption)
+    # Not finding a post is never proof it's gone (search and lists lag), so it's skipped
+    # and stays in the queue rather than being recorded as deleted.
     if count == 0:
-        return Outcome("gone", "no post with this caption in TikTok Studio")
+        return Outcome("skipped", f"no post titled {title!r} in TikTok Studio's search")
     if count > 1:
-        return Outcome("skipped", f"{count} posts have this caption; not guessing")
+        return Outcome("skipped", f"{count} posts are titled {title!r}; not guessing")
     row = page.locator('[data-sectra-row="0"]')
-    await row.scroll_into_view_if_needed()
     await row.hover()
-    buttons = row.locator("button, [role='button']")
-    item = await _open_menu_with(page, buttons, TT_MENU_LABEL, TT_DELETE, any_label=True)
-    if item is None:
-        return Outcome("skipped", "couldn't find Delete for this post")
-    await item.click()
-    dialog = page.locator("[role='dialog'], .TUXModal, [class*='modal' i]").last
+    # The row's last button is its "⋯" menu (privacy/edit/stats/comments come first).
+    more = row.locator("button, [role='button']").last
+    await more.click()
+    item = page.get_by_text(TT_DELETE).locator("visible=true")
+    try:
+        await item.first.wait_for(state="visible", timeout=8_000)
+    except PlaywrightTimeout:
+        await page.keyboard.press("Escape")
+        return Outcome("skipped", "the post's ⋯ menu has no Delete")
+    await item.first.click()
+    dialog = page.locator("[role='dialog'], [class*='modal' i]").filter(has_text=TT_DELETE).last
     await dialog.wait_for(state="visible", timeout=15_000)
     if not confirm:
         await _cancel(page, dialog)
         return Outcome("checked")
     await dialog.get_by_role("button", name=TT_DELETE).last.click()
     await dialog.wait_for(state="hidden", timeout=30_000)
-    await page.wait_for_timeout(2_000)
-    if await page.evaluate(_FIND_ROWS_JS, key):
+    await page.wait_for_timeout(3_000)
+    if await _search(page, title, target.caption):
         return Outcome("skipped", "TikTok still lists the post after deleting")
     return Outcome("deleted")
 
 
-async def _scroll_until_found(page: Page, key: str) -> int:
-    last_height = -1
-    for _ in range(TT_MAX_SCROLLS):
-        count = await page.evaluate(_FIND_ROWS_JS, key)
-        if count:
-            return count
-        height = await page.evaluate("document.scrollingElement.scrollHeight")
-        if height == last_height:
-            return 0
-        last_height = height
-        await page.mouse.wheel(0, 4_000)
-        await page.wait_for_timeout(1_500)
-    return 0
+async def _search(page: Page, title: str, caption: str) -> int:
+    """Search Studio's posts for ``title``; returns how many matching rows show."""
+    box = page.get_by_placeholder(TT_SEARCH).first
+    await box.fill("")
+    await box.fill(title)
+    await box.press("Enter")
+    await page.wait_for_timeout(4_000)
+    args = [normalize(title), normalize(caption), TT_ROW_MIN_BUTTONS]
+    return await page.evaluate(_FIND_ROWS_JS, args)
 
 
 # ---- shared ----------------------------------------------------------------------------
