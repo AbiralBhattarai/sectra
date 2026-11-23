@@ -134,3 +134,19 @@ async def test_kokoro_narrates_sentences_into_one_wav(tmp_path):
         assert reader.getnframes() / 24_000 == pytest.approx(seconds)
     assert 1.5 < seconds < 6
     assert progress == [0.5, 1.0]
+
+
+@pytest.mark.skipif(not CHARACTERS.is_dir(), reason="characters not generated")
+def test_every_registered_character_has_every_layer_on_one_canvas():
+    from src.domain.enums.emotion_enum import Emotion
+    from src.domain.models.character import MOUTH_SHAPES
+    from src.domain.models.story import CHARACTERS as REGISTERED
+
+    for name in REGISTERED:
+        folder = CHARACTERS / name
+        layers = [folder / "blink.svg", folder / "preview.svg"]
+        layers += [folder / "base" / f"{e.value}.svg" for e in Emotion]
+        layers += [folder / "mouth" / f"{shape}.svg" for shape in MOUTH_SHAPES]
+        for layer in layers:
+            assert layer.is_file(), layer
+            assert 'viewBox="0 0 1000 1500"' in layer.read_text(encoding="utf-8"), layer

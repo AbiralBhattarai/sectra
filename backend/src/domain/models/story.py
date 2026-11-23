@@ -22,6 +22,8 @@ DEFAULT_VOICE = "af_heart"
 CHARACTERS: dict[str, tuple[str, str]] = {
     "guy": ("Guy (fade + beard)", "am_michael"),
     "girl": ("Girl (brown hair)", "af_heart"),
+    "gent": ("British gent (suit)", "bm_george"),
+    "lady": ("British lady (gown)", "bf_emma"),
 }
 
 BackgroundMode = Literal["black", "gameplay"]

@@ -361,25 +361,228 @@ def girl_hair() -> tuple[str, str, str]:
     return HEAD_CLIP, behind, bangs + locks + strands + rim
 
 
+# ---------------------------------------------------------------- the British pair
+
+NAVY, NAVY_DARK, NAVY_RIM = "#26324f", "#18203a", "#9aa7c7"
+
+
+def thick(points: list[tuple[float, float]], colour: str, width: float, rim: str) -> str:
+    """A limb drawn as cloth: a rim colour, then the cloth on top, so it shows on black."""
+    return line(points, rim, width + 10) + line(points, colour, width)
+
+
+def hands(*points: tuple[float, float]) -> str:
+    return "".join(
+        f'<circle cx="{x}" cy="{y}" r="22" fill="{SKIN}" stroke="{INK}" stroke-width="7"/>'
+        for x, y in points
+    )
+
+
+def neck() -> str:
+    return line([(500, 640), (500, 724)], INK, 54) + line([(500, 640), (500, 724)], SKIN, 40)
+
+
+def gent_head() -> str:
+    """A squared, defined jaw instead of the round head (same eye and mouth anchors)."""
+    cx, cy, r = HEAD
+    ears = "".join(
+        f'<ellipse cx="{x}" cy="{cy + 10}" rx="30" ry="48" fill="{SKIN}" '
+        f'stroke="{INK}" stroke-width="12"/>'
+        for x in (cx - r + 8, cx + r - 8)
+    )
+    skull = (
+        f"M {cx - r} {cy} A {r} {r} 0 0 1 {cx + r} {cy} "
+        f"C {cx + r} 500 715 548 690 584 L 604 654 Q {cx} 678 396 654 L 310 584 "
+        f"C 285 548 {cx - r} 500 {cx - r} {cy} Z"
+    )
+    contour = stroke(
+        "M 646 600 L 604 640 M 354 600 L 396 640 M 492 646 q 8 7 16 0 "
+        "M 338 500 q 14 34 44 48 M 662 500 q -14 34 -44 48",
+        6,
+        "#bdbdbd",
+    )
+    return ears + fill(skull, SKIN) + stroke(skull, 12) + contour
+
+
+def gent_hair() -> str:
+    """Blonde, short at the sides, parted on one side and swept over into a soft quiff."""
+    blonde, shade, rim = "#e8c35a", "#b38b2e", "#7c5d17"
+    mass = (
+        "M 292 410 C 278 330 296 258 340 214 C 360 196 380 186 395 182 "
+        "C 432 148 520 134 602 150 C 692 168 742 240 724 330 C 722 366 716 394 708 410 "
+        "C 700 360 680 332 640 318 Q 520 296 420 312 C 370 320 330 352 310 410 Z"
+    )
+    sideburns = fill("M 290 404 L 298 474 L 316 474 L 314 404 Z", blonde) + fill(
+        "M 710 404 L 702 474 L 684 474 L 686 404 Z", blonde
+    )
+    part = stroke("M 396 184 C 402 222 406 262 412 310", 6, shade)
+    sweep = stroke(
+        "M 420 200 C 500 168 600 172 682 222 M 430 240 C 512 214 612 220 692 272 "
+        "M 442 282 C 522 262 600 268 662 302",
+        5,
+        shade,
+    )
+    return sideburns + fill(mass, blonde) + stroke(mass, 7, rim) + part + sweep
+
+
+def suit() -> str:
+    """Navy suit: jacket with lapels, white shirt, burgundy tie, pocket square."""
+    legs = ([(500, 1060), (425, 1250), (397, 1404)], [(500, 1060), (575, 1250), (603, 1404)])
+    trousers = "".join(thick(leg, NAVY, 46, NAVY_RIM) for leg in legs)
+    shoes = "".join(
+        f'<ellipse cx="{x}" cy="1424" rx="46" ry="19" fill="#0d0d0d" stroke="#8a8a8a" '
+        'stroke-width="6"/>'
+        for x in (372, 628)
+    )
+    jacket = (
+        "M 404 712 L 596 712 C 616 800 604 950 618 1092 L 520 1104 L 500 1080 "
+        "L 480 1104 L 382 1092 C 396 950 384 800 404 712 Z"
+    )
+    sleeves = thick([(414, 730), (382, 878), (362, 984)], NAVY, 46, NAVY_RIM) + thick(
+        [(586, 730), (614, 872), (650, 966)], NAVY, 46, NAVY_RIM
+    )
+    cuffs = line([(350, 986), (376, 996)], "#ffffff", 12) + line(
+        [(638, 970), (664, 958)], "#ffffff", 12
+    )
+    shirt = fill("M 450 712 L 550 712 L 500 862 Z", "#ffffff")
+    collar = stroke("M 450 712 L 476 744 L 500 722 L 524 744 L 550 712", 6)
+    tie = fill("M 487 726 L 513 726 L 508 752 L 492 752 Z", "#7a1f2b") + fill(
+        "M 492 752 L 508 752 L 517 832 L 500 856 L 483 832 Z", "#8e2433"
+    )
+    lapels = fill("M 450 712 L 428 770 L 452 778 L 500 866 Z", NAVY_DARK) + fill(
+        "M 550 712 L 572 770 L 548 778 L 500 866 Z", NAVY_DARK
+    )
+    lapel_lines = stroke(
+        "M 450 712 L 428 770 L 452 778 L 500 866 L 548 778 L 572 770 L 550 712", 5, NAVY_RIM
+    )
+    buttons = "".join(
+        f'<circle cx="500" cy="{y}" r="9" fill="#0f1426" stroke="{NAVY_RIM}" stroke-width="4"/>'
+        for y in (912, 972)
+    )
+    pocket = stroke("M 536 812 L 584 812", 6, NAVY_RIM) + fill(
+        "M 546 812 L 552 790 L 562 800 L 570 786 L 578 812 Z", "#ffffff"
+    )
+    return (
+        trousers + shoes + neck() + fill(jacket, NAVY) + stroke(jacket, 7, NAVY_RIM) + sleeves
+        + cuffs + shirt + lapels + lapel_lines + collar + tie + buttons + pocket
+        + hands((362, 1006), (656, 988))
+    )  # fmt: skip
+
+
+ROSE, ROSE_DARK, ROSE_RIM, CREAM = "#a8325a", "#7d2342", "#f2b6c9", "#f6e6c8"
+
+
+def gown() -> str:
+    """A rose gown: fitted bodice with a scoop neck, puffed sleeves, ribbon sash, full
+    skirt with folds and a cream hem, and a pearl necklace."""
+    arms = [[(432, 744), (396, 880), (360, 1010)], [(568, 744), (604, 875), (655, 990)]]
+    limbs = "".join(line(a, INK, BODY_OUTLINE) for a in arms) + "".join(
+        line(a, SKIN, BODY_LINE) for a in arms
+    )
+    shoes = "".join(
+        f'<ellipse cx="{x}" cy="1412" rx="30" ry="14" fill="#3a1420" stroke="{ROSE_RIM}" '
+        'stroke-width="5"/>'
+        for x in (452, 548)
+    )
+    skirt = (
+        "M 438 892 L 562 892 C 610 1050 690 1250 722 1390 Q 500 1420 278 1390 "
+        "C 310 1250 390 1050 438 892 Z"
+    )
+    folds = stroke(
+        "M 470 916 C 450 1080 420 1250 398 1396 M 500 916 L 500 1404 "
+        "M 530 916 C 550 1080 580 1250 602 1396 M 452 930 C 400 1100 350 1260 330 1392 "
+        "M 548 930 C 600 1100 650 1260 670 1392",
+        6,
+        ROSE_DARK,
+    )
+    hem = stroke("M 282 1388 Q 500 1418 718 1388", 14, CREAM)
+    bodice = "M 424 718 L 452 712 Q 500 784 548 712 L 576 718 L 562 892 L 438 892 Z"
+    sleeves = "".join(
+        f'<ellipse cx="{x}" cy="742" rx="44" ry="34" fill="{ROSE}" stroke="{ROSE_RIM}" '
+        'stroke-width="6"/>'
+        for x in (430, 570)
+    )
+    sash = fill("M 436 874 L 564 874 L 563 900 L 437 900 Z", CREAM) + fill(
+        "M 548 886 L 586 868 L 584 906 Z M 548 886 L 572 930 L 556 934 Z", CREAM
+    )
+    pearls = "".join(
+        f'<circle cx="{(1 - t) ** 2 * 458 + 2 * (1 - t) * t * 500 + t**2 * 542:.1f}" '
+        f'cy="{(1 - t) ** 2 * 724 + 2 * (1 - t) * t * 772 + t**2 * 724:.1f}" r="6" '
+        'fill="#ffffff" stroke="#b9b9b9" stroke-width="2"/>'
+        for t in (i / 10 for i in range(11))
+    )
+    return (
+        limbs + hands((360, 1010), (655, 990)) + shoes + fill(skirt, ROSE)
+        + stroke(skirt, 7, ROSE_RIM) + folds + hem + neck() + fill(bodice, ROSE)
+        + stroke(bodice, 7, ROSE_RIM) + sleeves + sash + pearls
+    )  # fmt: skip
+
+
+def lady_hair() -> tuple[str, str, str]:
+    """(defs, behind-head hair, in-front hair): a brown updo with a bun, middle part
+    swept back, and a curl in front of each ear."""
+    brown, shade, rim = "#6b3e22", "#4a2814", "#a8714a"
+    bun = (
+        f'<circle cx="500" cy="196" r="84" fill="{brown}" stroke="{rim}" stroke-width="7"/>'
+        + stroke("M 446 200 C 460 150 540 150 552 196 C 548 232 490 240 474 206", 6, shade)
+    )
+    top = (
+        "M 275 430 C 270 262 380 200 500 200 C 620 200 730 262 725 430 "
+        "C 715 370 690 330 650 306 C 600 290 540 296 500 318 "
+        "C 460 296 400 290 350 306 C 310 330 285 370 275 430 Z"
+    )
+    swept = stroke(
+        "M 500 318 C 460 268 400 250 330 290 M 500 318 C 540 268 600 250 670 290 "
+        "M 500 318 C 480 260 440 228 380 232 M 500 318 C 520 260 560 228 620 232",
+        5,
+        shade,
+    )
+    curls = stroke(
+        "M 292 420 C 266 470 304 500 280 548 C 270 568 284 584 296 578 "
+        "M 708 420 C 734 470 696 500 720 548 C 730 568 716 584 704 578",
+        10,
+        brown,
+    )
+    front = f'<g clip-path="url(#head)">{fill(top, brown)}{swept}</g>' + stroke(top, 6, rim) + curls
+    return HEAD_CLIP, bun, front
+
+
+#: Skin colour per character (the rest are the default white).
+SKINS = {"lady": "#fbeee6"}
+
+
 def build(name: str) -> dict[str, str]:
+    global SKIN  # every drawing helper reads it; set once per character
+    SKIN = SKINS.get(name, "#ffffff")
     files: dict[str, str] = {}
+    defs, under = "", ""
+    figure = body() + head()
+    lashes = False
     if name == "guy":
         defs, hair = guy_hair()
-        under, over = "", hair + guy_beard()
-        lashes = False
-    else:
+        over = hair + guy_beard()
+    elif name == "girl":
         defs, under, over = girl_hair()
         lashes = True
+    elif name == "gent":
+        figure = suit() + gent_head()
+        over = gent_hair()
+    elif name == "lady":
+        defs, under, over = lady_hair()
+        figure = gown() + head()
+        lashes = True
+    else:
+        raise ValueError(name)
     for expression in EXPRESSIONS:
         eye_lashes = "".join(lash(x, y) for x, y in EYES) if lashes and expression != "happy" else ""
         files[f"base/{expression}.svg"] = svg(
-            under, body(), head(), over, face(expression), eye_lashes, defs=defs
+            under, figure, over, face(expression), eye_lashes, defs=defs
         )
     for shape in MOUTHS:
         files[f"mouth/{shape}.svg"] = svg(mouth(shape))
     files["blink.svg"] = svg(blink(lashes))
     files["preview.svg"] = svg(
-        under, body(), head(), over, face("neutral"),
+        under, figure, over, face("neutral"),
         "".join(lash(x, y) for x, y in EYES) if lashes else "", mouth("X"), defs=defs,
     )  # fmt: skip
     return files
@@ -388,6 +591,8 @@ def build(name: str) -> dict[str, str]:
 CHARACTERS = {
     "guy": {"label": "Guy", "voice": "am_michael"},
     "girl": {"label": "Girl", "voice": "af_heart"},
+    "gent": {"label": "British gent", "voice": "bm_george"},
+    "lady": {"label": "British lady", "voice": "bf_emma"},
 }
 
 
