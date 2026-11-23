@@ -172,6 +172,7 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
         max_attempts=settings.job_max_attempts,
         # One video at a time through the analysis stages; only safe with one consumer slot.
         inline_streams=frozenset({analysis_stream} if settings.analysis_concurrency == 1 else ()),
+        storage=core.storage,
     )
     consumers = {
         stream: RedisStreamConsumer(

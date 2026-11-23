@@ -62,6 +62,10 @@ than working around the rule.**
   clips and builds 50 EDLs (+ auto zooms) in `asyncio.to_thread`.
 - Shutdown: SIGTERM drains in-flight jobs for up to 30s, then cancels them
   (they stay pending → replayed). `stop_grace_period: 40s` in compose.
+- Deleting a video cascades to its jobs; a running job notices its row is gone (the
+  dispatcher polls every 3 s), cancels its handler (ffmpeg/Rhubarb are killed, Kokoro stops
+  between sentences), acks, and deletes whatever it re-created under `data/videos/<id>/`.
+  Before this, a deleted story kept narrating and blocked the next one on `jobs:analysis`.
 - Progress: dispatcher saves + publishes `JobEvent` on Redis pub/sub
   `job-events`; `GET /api/events` relays it as SSE (`event: job`).
 

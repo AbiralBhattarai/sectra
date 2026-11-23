@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
@@ -8,6 +10,7 @@ from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.models.job import Job, JobEvent
+from src.ports.output.file_storage_port import FileStoragePort
 from src.ports.output.job_repository import JobRepository
 from src.ports.output.progress_port import ProgressPort
 from src.ports.output.video_repository import VideoRepository
@@ -19,6 +22,10 @@ ProgressCallback = Callable[[float], Awaitable[None]]
 
 StageHandler = Callable[[Job, ProgressCallback], Awaitable[None]]
 
+#: How often a running job checks that its row still exists (deleting a video
+#: cascades to its jobs, and that is how the worker learns to stop).
+CANCEL_POLL_SECONDS = 3.0
+
 
 class PipelineDispatcher:
     """Runs one job: picks the handler for its type, records the outcome, and on
@@ -28,7 +35,10 @@ class PipelineDispatcher:
     runs right away in the same call, so a video goes through all of that stream's
     stages before the stream's next message is read. The next stage is still queued
     first, so a crash mid-chain resumes from it; when its message arrives after the
-    inline run, the job is already terminal and is skipped."""
+    inline run, the job is already terminal and is skipped.
+
+    A job whose row disappears while it runs (its video was deleted) is cancelled, and
+    whatever it wrote for the deleted video is removed."""
 
     def __init__(
         self,
@@ -39,6 +49,8 @@ class PipelineDispatcher:
         handlers: Mapping[JobType, StageHandler],
         max_attempts: int,
         inline_streams: frozenset[str] = frozenset(),
+        storage: FileStoragePort | None = None,
+        cancel_poll_seconds: float = CANCEL_POLL_SECONDS,
     ) -> None:
         self._jobs = jobs
         self._videos = videos
@@ -47,6 +59,8 @@ class PipelineDispatcher:
         self._handlers = handlers
         self._max_attempts = max_attempts
         self._inline_streams = inline_streams
+        self._storage = storage
+        self._cancel_poll = cancel_poll_seconds
 
     async def run_job(self, job_id: UUID) -> None:
         next_id: UUID | None = job_id
@@ -78,7 +92,10 @@ class PipelineDispatcher:
             await self._update(job)
 
         try:
-            await self._handlers[job.type](job, report)
+            if not await self._run_unless_deleted(job, report):
+                logger.info("Job %s (%s) was deleted while running; stopped it", job.id, job.type)
+                await self._remove_orphan_files(job)
+                return None
         except Exception as exc:
             logger.exception("Job %s (%s) failed", job.id, job.type)
             await self._fail(job, str(exc) or type(exc).__name__)
@@ -99,6 +116,33 @@ class PipelineDispatcher:
         job.progress = 1.0
         await self._update(job)
         return inline
+
+    async def _run_unless_deleted(self, job: Job, report: ProgressCallback) -> bool:
+        """Runs the handler; returns False if the job's row vanished and it was stopped."""
+        work = asyncio.create_task(self._handlers[job.type](job, report))
+        try:
+            while True:
+                done, _ = await asyncio.wait({work}, timeout=self._cancel_poll)
+                if done:
+                    work.result()  # re-raises the handler's exception
+                    return True
+                if await self._jobs.get(job.id) is None:
+                    work.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await work
+                    return False
+        except asyncio.CancelledError:
+            # Shutdown: stop the handler too, and stay cancelled (the job is replayed).
+            work.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await work
+            raise
+
+    async def _remove_orphan_files(self, job: Job) -> None:
+        if self._storage is None or job.video_id is None:
+            return
+        if await self._videos.get(job.video_id) is None:
+            await self._storage.delete_video(job.video_id)
 
     async def _fail(self, job: Job, error: str) -> None:
         if job.video_id:

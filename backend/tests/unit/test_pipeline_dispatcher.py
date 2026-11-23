@@ -199,3 +199,65 @@ def test_downloads_have_their_own_stream():
     assert {JobType[s].stream for s in ("NORMALIZE", "PREPARE", "VAD", "TRANSCRIBE")} == {
         JobType.ANALYZE.stream
     }
+
+
+class _Storage:
+    def __init__(self):
+        self.deleted = []
+
+    async def delete_video(self, video_id):
+        self.deleted.append(video_id)
+
+
+async def test_deleting_the_video_stops_its_running_job_and_removes_its_files(fakes):
+    import asyncio
+
+    video = Video(title="story", source_url=None)
+    await fakes.videos.save(video)
+    job = Job(type=JobType.NARRATE, video_id=video.id)
+    await fakes.jobs.add(job)
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def slow(job, report):
+        started.set()
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    storage = _Storage()
+    runner = PipelineDispatcher(
+        jobs=fakes.jobs,
+        videos=fakes.videos,
+        scheduler=fakes.scheduler,
+        progress=fakes.progress,
+        handlers={JobType.NARRATE: slow},
+        max_attempts=3,
+        storage=storage,
+        cancel_poll_seconds=0.01,
+    )
+    run = asyncio.create_task(runner.run_job(job.id))
+    await started.wait()
+    # What the API's delete does: the video row goes, and its jobs with it (cascade).
+    await fakes.videos.delete(video.id)
+    del fakes.jobs.jobs[job.id]
+
+    await asyncio.wait_for(run, timeout=2)
+
+    assert cancelled.is_set()
+    assert storage.deleted == [video.id]
+    assert fakes.queue.enqueued == []
+
+
+async def test_a_failing_handler_still_fails_with_the_cancel_watch(fakes):
+    job = Job(type=JobType.PING)
+    await fakes.jobs.add(job)
+
+    async def boom(job, report):
+        raise RuntimeError("bad")
+
+    await dispatcher(fakes, {JobType.PING: boom}).run_job(job.id)
+
+    assert fakes.jobs.jobs[job.id].status is JobStatus.FAILED
+    assert fakes.jobs.jobs[job.id].error == "bad"
