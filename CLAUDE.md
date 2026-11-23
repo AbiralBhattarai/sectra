@@ -250,6 +250,12 @@ Poster (`poster/`, host only, like `whisper-server/`):
   Failures back off (serve: 1 min doubling; run: 15 min).
 - `schedule.py` (pure): `POSTS_PER_DAY` (10) spread over `ACTIVE_HOURS` (9-23) with ±25%
   jitter; cap reached → next day's opening.
+- `poster delete [--platform P] [--check | --yes] [--limit N]` (`deleting.py`) takes down
+  only what the sidecars record as posted: YouTube/X by the saved link (Studio "Delete
+  forever"; X caret → Delete), TikTok by caption in Studio's content list (skipped unless
+  exactly one row matches). Default lists only; `--check` opens each delete dialog and
+  cancels; `--yes` deletes and writes `deleted[platform]` (keeps `posted`, so nothing is
+  re-uploaded). Its selectors were written without a live check — verify with `--check`.
 - Selectors live at the top of each `platforms/*.py`; failures save a screenshot to
   `poster/logs/`. They will need updating when the sites change.
 

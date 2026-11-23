@@ -1,5 +1,5 @@
 """poster login <platform> | poster serve | poster run [--dry-run] [--once] [--platform P]
-| poster status"""
+| poster status | poster delete [--platform P] [--check | --yes] [--limit N]"""
 
 import argparse
 import asyncio
@@ -12,7 +12,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from poster import outbox
+from poster import deleting, outbox
 from poster.browser import open_for_login, session
 from poster.config import PLATFORMS, Settings, load_settings
 from poster.platforms import uploader_for
@@ -43,6 +43,19 @@ def main(argv: list[str] | None = None) -> None:
     )
     serve.add_argument("--dry-run", action="store_true", help="fill everything in, don't publish")
     commands.add_parser("status", help="queue and schedule per platform")
+    delete = commands.add_parser(
+        "delete",
+        help="delete what the poster uploaded (only lists them unless --check or --yes)",
+    )
+    delete.add_argument("--platform", action="append", choices=deleting.DELETABLE)
+    mode = delete.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--check",
+        action="store_true",
+        help="find each post and open its delete dialog, then cancel",
+    )
+    mode.add_argument("--yes", action="store_true", help="really delete (can't be undone)")
+    delete.add_argument("--limit", type=int, help="stop after this many posts")
     args = parser.parse_args(argv)
 
     settings = load_settings()
@@ -58,6 +71,12 @@ def main(argv: list[str] | None = None) -> None:
         platforms = tuple(args.platform or settings.platforms)
         try:
             asyncio.run(run_loop(settings, platforms, dry_run=args.dry_run, once=args.once))
+        except KeyboardInterrupt:
+            logger.info("Stopped")
+    elif args.command == "delete":
+        platforms = tuple(args.platform or deleting.DELETABLE)
+        try:
+            asyncio.run(delete_posts(settings, platforms, args.check, args.yes, args.limit))
         except KeyboardInterrupt:
             logger.info("Stopped")
     else:
@@ -260,6 +279,63 @@ async def _screenshot(settings: Settings, page, platform: str, tag: str) -> Path
         return path
     except Exception:
         return None
+
+
+# ---- delete -------------------------------------------------------------------------
+
+
+async def delete_posts(
+    settings: Settings,
+    platforms: tuple[str, ...],
+    check: bool,
+    confirm: bool,
+    limit: int | None,
+) -> None:
+    found = deleting.targets(outbox.scan(settings.outbox_dir), platforms)
+    if limit is not None:
+        found = found[:limit]
+    if not found:
+        print("Nothing to delete: no posts recorded in the outbox for", ", ".join(platforms))
+        return
+    for target in found:
+        print(f"  {target.platform:<8} {target.url or '(found by caption)'}  {target.caption[:70]}")
+    print(f"{len(found)} post(s).")
+    if not (check or confirm):
+        print("Nothing deleted. Add --check to test finding them, or --yes to delete them.")
+        return
+
+    counts: dict[str, int] = {}
+    for platform in platforms:
+        mine = [t for t in found if t.platform == platform]
+        if not mine:
+            continue
+        async with session(settings, platform) as context:
+            page = context.pages[0] if context.pages else await context.new_page()
+            for target in mine:
+                try:
+                    result = await deleting.delete_one(page, target, confirm=confirm)
+                except (NotLoggedInError, ChallengeError) as exc:
+                    logger.warning(
+                        "%s: %s; skipping the rest (%s)",
+                        platform,
+                        exc,
+                        _paused_hint(platform, str(exc)),
+                    )
+                    break
+                except Exception as exc:
+                    shot = await _screenshot(settings, page, platform, "delete")
+                    result = deleting.Outcome("skipped", f"{type(exc).__name__}: {exc}"[:200])
+                    if shot:
+                        result.detail += f" (screenshot {shot})"
+                if confirm and result.status in ("deleted", "gone"):
+                    deleting.record_deleted(target.item, platform, _now(), result.detail)
+                counts[result.status] = counts.get(result.status, 0) + 1
+                logger.info(
+                    "%s %s: %s %s", platform, result.status, target.caption[:60], result.detail
+                )
+                # Unhurried, one at a time, like doing it by hand.
+                await page.wait_for_timeout(random.randint(3_000, 6_000))
+    print("Done:", ", ".join(f"{n} {status}" for status, n in sorted(counts.items())) or "nothing")
 
 
 # ---- status -------------------------------------------------------------------------
