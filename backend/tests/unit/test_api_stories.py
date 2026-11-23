@@ -55,7 +55,7 @@ async def test_bad_story_is_422(client):
 
 async def test_options_and_character_layers(client):
     options = (await client.get("/api/stories/options")).json()
-    assert {"id": "guy", "label": "Guy (fade + beard)", "voice": "am_michael"} in options[
+    assert {"id": "guy", "label": "Sam Stick", "voice": "am_michael"} in options[
         "characters"
     ]
     assert any(v["id"] == "af_heart" for v in options["voices"])

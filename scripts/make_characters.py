@@ -589,10 +589,10 @@ def build(name: str) -> dict[str, str]:
 
 
 CHARACTERS = {
-    "guy": {"label": "Guy", "voice": "am_michael"},
-    "girl": {"label": "Girl", "voice": "af_heart"},
-    "gent": {"label": "British gent", "voice": "bm_george"},
-    "lady": {"label": "British lady", "voice": "bf_emma"},
+    "guy": {"label": "Sam Stick", "voice": "am_michael"},
+    "girl": {"label": "Jane Stick", "voice": "af_heart"},
+    "gent": {"label": "George Stick", "voice": "bm_george"},
+    "lady": {"label": "Anna Stick", "voice": "bf_emma"},
 }
 
 

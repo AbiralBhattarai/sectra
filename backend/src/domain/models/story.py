@@ -20,10 +20,10 @@ DEFAULT_VOICE = "af_heart"
 
 #: Narrator characters bundled in ``assets/characters/``: name → (label, default voice).
 CHARACTERS: dict[str, tuple[str, str]] = {
-    "guy": ("Guy (fade + beard)", "am_michael"),
-    "girl": ("Girl (brown hair)", "af_heart"),
-    "gent": ("British gent (suit)", "bm_george"),
-    "lady": ("British lady (gown)", "bf_emma"),
+    "guy": ("Sam Stick", "am_michael"),
+    "girl": ("Jane Stick", "af_heart"),
+    "gent": ("George Stick", "bm_george"),
+    "lady": ("Anna Stick", "bf_emma"),
 }
 
 BackgroundMode = Literal["black", "gameplay"]
