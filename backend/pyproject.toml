@@ -59,6 +59,7 @@ ignore = ["E501", "N818"]  # N818: keep Reva-style `App*Exception` names
 "src/config/worker_container.py" = ["TID251"]
 "src/api_main.py" = ["TID251"]
 "src/worker_main.py" = ["TID251"]
+"src/prune_main.py" = ["TID251"]
 "alembic/*.py" = ["TID251"]
 # Intra-adapter imports (repositories sharing engine/table/client setup) are fine.
 "src/adapters/**/*.py" = ["TID251"]

@@ -102,5 +102,5 @@ class FileStoragePort(Protocol):
         ...
 
     async def delete_video(self, video_id: UUID) -> None:
-        """Remove every file of the video."""
+        """Remove every file of the video, its outbox folder included."""
         ...

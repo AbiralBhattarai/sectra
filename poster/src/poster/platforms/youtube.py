@@ -1,7 +1,10 @@
 """YouTube Shorts through YouTube Studio's upload dialog. A vertical video under three
 minutes is published as a Short automatically."""
 
+import re
+
 from playwright.async_api import Page
+from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from poster.platforms.base import (
     UPLOAD_TIMEOUT_MS,
@@ -24,6 +27,9 @@ DONE = "#done-button"
 VISIBILITY = 'tp-yt-paper-radio-button[name="{name}"]'
 VIDEO_LINK = "ytcp-video-info a"
 CLOSE = "#close-button"
+#: When /upload lands on the Studio dashboard instead of opening the dialog.
+UPLOAD_BUTTON = re.compile(r"^\s*upload videos?\s*$", re.I)
+CREATE_BUTTON = "ytcp-button#create-icon, #create-icon"
 
 
 class YouTubeUploader:
@@ -42,6 +48,7 @@ class YouTubeUploader:
 
     async def upload(self, page: Page, post: Post, dry_run: bool) -> str | None:
         await page.goto(UPLOAD_URL, wait_until="domcontentloaded")
+        await _open_upload_dialog(page)
         await page.locator(FILE_INPUT).first.set_input_files(post.video, timeout=60_000)
 
         title = await first_visible(page.locator(TITLE_BOX), timeout=120_000)
@@ -67,6 +74,23 @@ class YouTubeUploader:
         await done.click()
         await maybe_click(page.locator(CLOSE), timeout=60_000)
         return link
+
+
+async def _open_upload_dialog(page: Page) -> None:
+    """/upload usually opens Studio's upload dialog, but sometimes (seen on a second
+    channel) it lands on the dashboard: then open it with Studio's own buttons."""
+    try:
+        await page.locator(FILE_INPUT).first.wait_for(state="attached", timeout=20_000)
+        return
+    except PlaywrightTimeout:
+        pass
+    if looks_like_login(page.url):
+        raise NotLoggedInError("YouTube Studio redirected to sign-in")
+    # The dashboard's "Upload videos" button, else Create → Upload videos.
+    if not await maybe_click(page.get_by_role("button", name=UPLOAD_BUTTON), timeout=5_000):
+        await page.locator(CREATE_BUTTON).first.click(timeout=30_000)
+        await page.get_by_text(UPLOAD_BUTTON).first.click(timeout=15_000)
+    await page.locator(FILE_INPUT).first.wait_for(state="attached", timeout=30_000)
 
 
 def _with_shorts_tag(title: str) -> str:

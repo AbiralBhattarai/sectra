@@ -1,6 +1,9 @@
+import contextlib
 import functools
 import json
+import logging
 import shutil
+import time
 from collections.abc import AsyncIterator
 from concurrent.futures import Executor
 from pathlib import Path
@@ -10,6 +13,8 @@ from uuid import UUID
 from src.domain.enums.video_file_enum import VideoFile
 from src.domain.services.outbox_naming import folder_name, outbox_stem, unique_stem
 from src.utils.concurrency import run_blocking
+
+logger = logging.getLogger(__name__)
 
 #: Scratch space for background downloads/uploads, inside the backgrounds root.
 _INCOMING = ".incoming"
@@ -211,4 +216,61 @@ class LocalFsStorageAdapter:
         return self._characters_root / name / layer
 
     async def delete_video(self, video_id: UUID) -> None:
-        await run_blocking(self._executor, shutil.rmtree, self._videos_root / str(video_id), True)
+        def delete() -> None:
+            folders = [self._videos_root / str(video_id), *self._outbox_folders(video_id)]
+            for folder in folders:
+                shutil.rmtree(folder, ignore_errors=True)
+                if folder.exists():  # a file still open (the poster uploading it, a player)
+                    logger.warning("Couldn't remove all of %s; delete what's left by hand", folder)
+
+        await run_blocking(self._executor, delete)
+
+    def leftovers(self, known: set[str], min_age_seconds: float = 600) -> list[Path]:
+        """Folders of videos that no longer exist: ``videos/<id>/`` and outbox folders
+        whose sidecars all name unknown videos. Recently changed ones are left alone (a
+        video being created right now isn't in the list that was read)."""
+        now = time.time()
+
+        def old(path: Path) -> bool:
+            return now - path.stat().st_mtime >= min_age_seconds
+
+        found = []
+        if self._videos_root.is_dir():
+            for folder in self._videos_root.iterdir():
+                if folder.is_dir() and folder.name not in known and old(folder):
+                    with contextlib.suppress(ValueError):
+                        UUID(folder.name)  # only video folders
+                        found.append(folder)
+        if self._outbox_root.is_dir():
+            for folder in self._outbox_root.iterdir():
+                if not folder.is_dir() or not old(folder):
+                    continue
+                owners = set()
+                for sidecar in folder.glob("*.json"):
+                    try:
+                        owners.add(json.loads(sidecar.read_text(encoding="utf-8")).get("video_id"))
+                    except (OSError, ValueError):
+                        owners.add("?")  # unreadable: keep the folder
+                if owners and not owners & (known | {"?", None}):
+                    found.append(folder)
+        return found
+
+    def _outbox_folders(self, video_id: UUID) -> list[Path]:
+        """The video's outbox folders: named ``… [<id prefix>]``, and every sidecar in them
+        names this exact video (an id prefix alone could, rarely, be another video's)."""
+        if not self._outbox_root.is_dir():
+            return []
+        suffix = f"[{str(video_id)[:8]}]"
+        found = []
+        for folder in self._outbox_root.iterdir():
+            if not (folder.is_dir() and folder.name.endswith(suffix)):
+                continue
+            owners = set()
+            for sidecar in folder.glob("*.json"):
+                try:
+                    owners.add(json.loads(sidecar.read_text(encoding="utf-8")).get("video_id"))
+                except (OSError, ValueError):
+                    owners.add(None)  # unreadable: can't tell whose it is
+            if owners <= {str(video_id)}:
+                found.append(folder)
+        return found
