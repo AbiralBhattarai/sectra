@@ -5,9 +5,9 @@ import struct
 from pathlib import Path
 
 #: Longest video each platform takes through its web uploader, in seconds. Instagram
-#: reels stop at 3 minutes; X allows 2:20 without Premium (raise it with X_MAX_SECONDS).
-#: YouTube (anything over 3 min just isn't a Short) and TikTok (10 min) aren't limited.
-DEFAULT_LIMITS: dict[str, float] = {"instagram": 180, "x": 140}
+#: reels and YouTube Shorts stop at 3 minutes (a longer upload becomes a normal YouTube
+#: video); X allows 2:20 without Premium (raise it with X_MAX_SECONDS). TikTok takes 10 min.
+DEFAULT_LIMITS: dict[str, float] = {"instagram": 180, "youtube": 180, "x": 140}
 
 _CONTAINERS = {b"moov"}
 

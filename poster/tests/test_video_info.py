@@ -47,7 +47,8 @@ def test_too_long_names_the_platform_and_limit():
     assert too_long(184.3, "instagram", DEFAULT_LIMITS).startswith("Too long for instagram: 184 s")
     assert too_long(180.2, "instagram", DEFAULT_LIMITS) is None  # rounding slack
     assert too_long(150, "x", DEFAULT_LIMITS) is not None
-    assert too_long(600, "youtube", DEFAULT_LIMITS) is None
+    assert too_long(184, "youtube", DEFAULT_LIMITS) is not None  # would be a normal video
+    assert too_long(600, "tiktok", DEFAULT_LIMITS) is None
     assert too_long(None, "instagram", DEFAULT_LIMITS) is None
 
 
