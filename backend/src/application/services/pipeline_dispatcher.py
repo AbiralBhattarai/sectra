@@ -78,6 +78,10 @@ class PipelineDispatcher:
             # the message of a stage that already ran inline).
             return None
 
+        if not await self._owner_exists(job):
+            await self._abandon(job)
+            return None
+
         job.attempts += 1
         if job.attempts > self._max_attempts:
             await self._fail(job, f"Gave up after {self._max_attempts} attempts")
@@ -93,8 +97,8 @@ class PipelineDispatcher:
 
         try:
             if not await self._run_unless_deleted(job, report):
-                logger.info("Job %s (%s) was deleted while running; stopped it", job.id, job.type)
-                await self._remove_orphan_files(job)
+                logger.info("Job %s (%s): its video was deleted; stopped it", job.id, job.type)
+                await self._abandon(job)
                 return None
         except Exception as exc:
             logger.exception("Job %s (%s) failed", job.id, job.type)
@@ -126,7 +130,7 @@ class PipelineDispatcher:
                 if done:
                     work.result()  # re-raises the handler's exception
                     return True
-                if await self._jobs.get(job.id) is None:
+                if not await self._owner_exists(job):
                     work.cancel()
                     with contextlib.suppress(asyncio.CancelledError, Exception):
                         await work
@@ -138,11 +142,28 @@ class PipelineDispatcher:
                 await work
             raise
 
-    async def _remove_orphan_files(self, job: Job) -> None:
-        if self._storage is None or job.video_id is None:
-            return
-        if await self._videos.get(job.video_id) is None:
-            await self._storage.delete_video(job.video_id)
+    async def _owner_exists(self, job: Job) -> bool:
+        """False once the job's video is deleted. Stage jobs go with the video (cascade);
+        clip jobs (export, tracking) only name it in their payload, so their row stays."""
+        if await self._jobs.get(job.id) is None:
+            return False
+        video_id = _owner(job)
+        return video_id is None or await self._videos.get(video_id) is not None
+
+    async def _abandon(self, job: Job) -> None:
+        """Clean up after a job whose video is gone: drop what it re-created on disk and
+        close the job if its row survived."""
+        video_id = _owner(job)
+        if (
+            self._storage is not None
+            and video_id is not None
+            and await self._videos.get(video_id) is None
+        ):
+            await self._storage.delete_video(video_id)
+        if await self._jobs.get(job.id) is not None:
+            job.status = JobStatus.FAILED
+            job.error = "The video was deleted"
+            await self._update(job)
 
     async def _fail(self, job: Job, error: str) -> None:
         if job.video_id:
@@ -161,3 +182,13 @@ class PipelineDispatcher:
         job.updated_at = datetime.now(UTC)
         await self._jobs.save(job)
         await self._progress.publish(JobEvent.from_job(job))
+
+
+def _owner(job: Job) -> UUID | None:
+    if job.video_id is not None:
+        return job.video_id
+    raw = job.payload.get("video_id")
+    try:
+        return UUID(str(raw)) if raw else None
+    except ValueError:
+        return None

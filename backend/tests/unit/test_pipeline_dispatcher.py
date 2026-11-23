@@ -213,7 +213,7 @@ async def test_deleting_the_video_stops_its_running_job_and_removes_its_files(fa
     import asyncio
 
     video = Video(title="story", source_url=None)
-    await fakes.videos.save(video)
+    await fakes.videos.add(video)
     job = Job(type=JobType.NARRATE, video_id=video.id)
     await fakes.jobs.add(job)
     started, cancelled = asyncio.Event(), asyncio.Event()
@@ -238,7 +238,7 @@ async def test_deleting_the_video_stops_its_running_job_and_removes_its_files(fa
         cancel_poll_seconds=0.01,
     )
     run = asyncio.create_task(runner.run_job(job.id))
-    await started.wait()
+    await asyncio.wait_for(started.wait(), timeout=2)
     # What the API's delete does: the video row goes, and its jobs with it (cascade).
     await fakes.videos.delete(video.id)
     del fakes.jobs.jobs[job.id]
@@ -261,3 +261,56 @@ async def test_a_failing_handler_still_fails_with_the_cancel_watch(fakes):
 
     assert fakes.jobs.jobs[job.id].status is JobStatus.FAILED
     assert fakes.jobs.jobs[job.id].error == "bad"
+
+
+async def test_an_export_of_a_deleted_video_is_stopped_and_closed(fakes):
+    import asyncio
+
+    video = Video(title="v", source_url=None)
+    await fakes.videos.add(video)
+    job = Job(type=JobType.EXPORT, payload={"video_id": str(video.id)})
+    await fakes.jobs.add(job)
+    started = asyncio.Event()
+
+    async def render(job, report):
+        started.set()
+        await asyncio.sleep(60)
+
+    storage = _Storage()
+    runner = PipelineDispatcher(
+        jobs=fakes.jobs,
+        videos=fakes.videos,
+        scheduler=fakes.scheduler,
+        progress=fakes.progress,
+        handlers={JobType.EXPORT: render},
+        max_attempts=3,
+        storage=storage,
+        cancel_poll_seconds=0.01,
+    )
+    run = asyncio.create_task(runner.run_job(job.id))
+    await asyncio.wait_for(started.wait(), timeout=2)
+    await fakes.videos.delete(video.id)  # clip jobs are not cascaded
+
+    await asyncio.wait_for(run, timeout=2)
+
+    stored = fakes.jobs.jobs[job.id]
+    assert stored.status is JobStatus.FAILED
+    assert stored.error == "The video was deleted"
+    assert storage.deleted == [video.id]
+
+
+async def test_a_queued_job_of_a_deleted_video_never_starts(fakes):
+    import uuid
+
+    ran = []
+
+    async def handler(job, report):
+        ran.append(job.id)
+
+    job = Job(type=JobType.TRACK, payload={"video_id": str(uuid.uuid4())})
+    await fakes.jobs.add(job)
+
+    await dispatcher(fakes, {JobType.TRACK: handler}).run_job(job.id)
+
+    assert ran == []
+    assert fakes.jobs.jobs[job.id].status is JobStatus.FAILED
