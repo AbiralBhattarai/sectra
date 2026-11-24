@@ -6,6 +6,10 @@ asks an LLM for the best standalone moments, and lets you polish each clip in a
 browser editor. It exports vertical (or square or landscape) MP4s with captions
 burned in.
 
+A second tab, **Narrator**, goes the other way: paste a written story and Sectra narrates
+it with a local voice, puts a lip-synced stick figure over black or gameplay footage,
+and cuts it into Part 1, Part 2, … ready to post.
+
 Every model can run locally or in the cloud: the LLM through **Ollama** or any
 OpenAI-compatible/Anthropic API, and speech-to-text through **faster-whisper** or
 any OpenAI-compatible transcription API.
@@ -31,6 +35,12 @@ any OpenAI-compatible transcription API.
   **Download** that renders the clip if needed.
 - **Built-in music:** 90 public-domain (CC0) tracks grouped by mood, with preview, plus
   your own uploads.
+- **Narrator:** pasted stories narrated by Kokoro TTS (10 US/UK voices, adjustable
+  speed), with an optional LLM polish pass, a talking stick narrator (Sam, Jane, George
+  or Anna Stick) lip-synced with Rhubarb and changing expression with the story, and
+  automatic splitting into parts that fit Shorts/Reels/X.
+- **Background library:** gameplay clips (from a URL or an upload, grouped in
+  categories) for stories to play over.
 
 ## How it works
 
@@ -40,7 +50,14 @@ URL / upload ─▶ ingest ─▶ normalize ─▶ prepare ─▶ VAD ─▶ tra
                                        audio,
                                        waveform)
 clip ─▶ editor (edit decision list, autosaved) ─▶ export (ffmpeg + libass) ─▶ MP4 + SRT
+
+story text ─▶ narrate ─▶ compose ─▶ prepare ─▶ VAD ─▶ transcribe ─▶ split into parts
+             (Kokoro,    (black or
+              Rhubarb)    gameplay)
 ```
+
+A story builds its own `source.mp4` and then joins the same pipeline, so its parts use
+the same editor, export, outbox and poster as clips.
 
 Each stage is a background job on a Redis Stream, processed by an async worker.
 Progress streams to the browser over Server-Sent Events. A failed stage can be
@@ -129,6 +146,7 @@ container on CUDA instead. Windows usually has no `make`; the plain commands are
 | `make down`   | `docker compose down`                                      |
 | `make logs`   | `docker compose logs -f api worker`                        |
 | `make music`  | `python scripts/fetch_music.py`                            |
+| `make characters` | `python scripts/make_characters.py`                    |
 | `make test`   | `docker compose up -d postgres redis; cd backend; uv run pytest` |
 | `make poster` | `cd poster; uv run poster serve`                           |
 
@@ -277,6 +295,40 @@ The manifest records each track's exact source page and license. Moods are a bes
 guess from titles and albums. Tracks you upload are stored in `data/music/` and are
 listed after the built-in ones.
 
+## Narrator (stories)
+
+Open the **Narrator** tab, paste a story (up to 20,000 characters, about 25 minutes of
+narration) and press **Narrate** (`Ctrl`/`⌘` + `Enter`). Options:
+
+| Option        | What it does                                                              |
+| ------------- | ------------------------------------------------------------------------- |
+| Title         | Optional. Left empty, Sectra derives one (from the LLM when polishing, else the first sentence). |
+| Polish        | Your LLM rewrites the text for narration (hook first, no Reddit leftovers) and writes the title and social caption. If the LLM fails or changes the text too much, your own text is used. |
+| Character     | Sam, Jane, George or Anna Stick, or none. Each has a matching default voice. |
+| Voice / speed | 10 Kokoro voices (US and UK, male and female), speed 0.7–1.5×.            |
+| Background    | Black, or gameplay from the library: a chosen clip, a random clip from a category, or any random clip. |
+
+The narrator's mouth is synced to the words, its expression (neutral, happy, sad, angry,
+shocked, smug) follows the story, and it blinks and bobs while it talks. Stories longer
+than `STORY_PART_MAX_SECONDS` (140 s, X's limit without Premium) are cut at pauses into
+parts: Part 1 carries the title, the rest "Part 2", "Part 3", …. Each part opens in the
+normal editor, where the editor's **Narrator** tab shows/hides, swaps or resizes the
+character and edits its expressions, and captions sit just above its head. With
+`AUTO_EXPORT`/`AUTO_TRACK` on, the parts go to the outbox in order.
+
+Kokoro (TTS) and Rhubarb (lip sync) are built into the worker image, so nothing extra is
+needed in Docker. For host runs/tests, `make models` also fetches Kokoro into
+`backend/models/`.
+
+**Background library:** the gameplay library in the Narrator tab downloads a video from
+a URL (anything yt-dlp supports) or takes an upload, into a category such as
+`minecraft`. Clips are stored video-only at ≤ 1080p in `data/backgrounds/<category>/`. A
+story starts at a random offset and loops the clip if it is shorter than the narration.
+
+**Characters** are SVG layers in `assets/characters/<name>/` drawn by
+`scripts/make_characters.py` (stdlib only). Change the script and run `make characters`
+to redraw them.
+
 ## Posting to social media
 
 `poster/` uploads finished clips to YouTube, TikTok, Instagram, X and Facebook. It runs
@@ -305,6 +357,10 @@ In `poster/.env`:
 - `BROWSER_CHANNEL=chrome` uses your installed Chrome. If Chrome is somewhere unusual,
   set `CHROME_PATH`. Without Chrome, set `chromium` and run
   `uv run playwright install chromium`.
+- `<PLATFORM>_MAX_SECONDS`: the longest clip the poster sends to a platform. Defaults:
+  YouTube and Instagram 180 s, X 140 s (raise `X_MAX_SECONDS` with Premium). A longer
+  clip is not uploaded and is marked ✗ gave up with the reason: YouTube would publish it
+  as a normal video instead of a Short, and the other sites accept the file and then hang.
 
 Which platforms the **Post button** sends to is set separately, in the root `.env`
 (`POST_PLATFORMS`).
@@ -347,6 +403,22 @@ Uploads run one after another, so 10 clips to 4 platforms means 40 uploads. The 
 card shows a chip per platform: ✓ posted (with a link), … waiting, ✗ gave up, 🔒 needs
 a login.
 
+### Taking posts down
+
+`poster delete` removes only what the poster itself uploaded, as recorded in the outbox
+sidecars: YouTube and X by the saved link, TikTok by finding the caption in TikTok
+Studio (skipped unless exactly one post matches).
+
+```powershell
+uv run poster delete                              # list what would be deleted
+uv run poster delete --check                      # open each delete dialog, then cancel
+uv run poster delete --yes                        # really delete (can't be undone)
+uv run poster delete --platform x --yes --limit 5
+```
+
+Deletes are recorded in the sidecar, so those clips are never uploaded again. Run
+`--check` first: the delete selectors are the newest and least tested.
+
 ### When something goes wrong
 
 - **A card stays on "waiting":** nothing is posting. Start `uv run poster serve`.
@@ -385,8 +457,12 @@ combination is invalid.
 | `VAD_CONCURRENCY`                                 | `2`                                    | Files scored by Silero at once                                   |
 | `JOB_CONCURRENCY` / `JOB_MAX_ATTEMPTS`            | `4` / `3`                              | Jobs per queue at once; retries for a job that crashes the worker |
 | `YTDLP_COOKIES_FILE`                              | –                                      | Netscape cookies file for videos that need a login; put it in `data/` and use `/data/cookies.txt` |
+| `TTS_PAUSE_SECONDS`                               | `0.25`                                 | Narrator: silence between sentences                              |
+| `TTS_CONCURRENCY`                                 | `1`                                    | Stories narrated at once (each uses several CPU cores)           |
+| `STORY_PART_MAX_SECONDS`                          | `140`                                  | Longer stories are split into parts (Shorts/Reels allow 180)     |
 
-`DATABASE_URL`, `REDIS_URL`, `DATA_DIR`, `VAD_MODEL_PATH` and `FONTS_DIR` are set by
+`DATABASE_URL`, `REDIS_URL`, `DATA_DIR`, `VAD_MODEL_PATH`, `FONTS_DIR`, `TTS_MODEL_PATH`,
+`TTS_VOICES_PATH`, `RHUBARB_PATH` and `CHARACTERS_DIR` are set by
 `docker-compose.yaml` for the containers. The values in `.env` only apply when you
 run the backend on the host.
 
@@ -403,6 +479,7 @@ run the backend on the host.
 | Fix a caption                   | **Captions** tab → click a word → edit text or timing     |
 | Add a text overlay              | **Text** tab → *Add text at playhead*, then drag it on the preview |
 | Background music                | **Music** tab → upload or pick a track, set volume and ducking |
+| Narrator (story parts)          | **Narrator** tab → show/hide, swap, resize, expressions; drag it on the preview |
 | Render                          | **Export** tab → *Export MP4 + captions* → download       |
 
 Edits save automatically shortly after you stop. The toolbar shows the save state,
@@ -457,7 +534,7 @@ backend/src/
 ├── application/   # services implementing the use cases, DTOs, prompts
 ├── adapters/
 │   ├── input/     # rest/ (FastAPI + SSE), worker/ (Redis Streams consumer)
-│   └── output/    # persistence/, queue/, events/, llm/, stt/, vad/, downloader/, media/, renderer/, storage/
+│   └── output/    # persistence/, queue/, events/, llm/, stt/, vad/, tts/, lipsync/, downloader/, media/, renderer/, storage/
 └── config/        # settings, composition roots (container.py, worker_container.py)
 ```
 
@@ -468,8 +545,8 @@ the deeper notes.
 
 ```
 frontend/src/
-├── panels/        # sources (left) and clips (right)
-├── editor/        # store (zustand + zundo), preview, captions/overlay/music/export tabs, pure EDL logic
+├── panels/        # sources (left), clips (right), narrator + background library
+├── editor/        # store (zustand + zundo), preview, captions/overlay/music/narrator/export tabs, pure EDL logic
 └── timeline/      # canvas waveform + lanes
 ```
 
@@ -480,12 +557,24 @@ Everything lives in `./data` (bind-mounted) and in Docker volumes:
 ```
 data/videos/<id>/   source.mp4 (also what the editor plays), audio.wav, peaks.json, thumbnail.jpg,
                     speech.json, transcript.json, exports/<export-id>.{mp4,srt}
+                    stories also: narration.wav, lipsync.json
 data/music/         uploaded background tracks
+data/backgrounds/   gameplay library for stories, <category>/<id>-<name>.mp4
+data/outbox/        rendered clips + .json sidecars for the poster
 assets/music/       built-in CC0 library (manifest committed, mp3s from `make music`)
+assets/characters/  narrator SVG layers (from `make characters`)
 ```
 
-Deleting a video in the UI removes its files, clips and exports. To start completely
-fresh, run `docker compose down -v && rm -rf data`.
+Deleting a video or story in the UI removes its files, clips, exports and outbox folder,
+and stops any of its jobs that are still running. Older deletes could leave folders
+behind; list and remove them with:
+
+```bash
+docker compose exec api python -m src.prune_main          # list leftovers and their size
+docker compose exec api python -m src.prune_main --yes    # delete them
+```
+
+To start completely fresh, run `docker compose down -v && rm -rf data`.
 
 ## Troubleshooting
 
@@ -502,9 +591,14 @@ fresh, run `docker compose down -v && rm -rf data`.
 - **Clips never get posted:** the poster isn't running. See *Posting to social media*.
 - **"Video has no audio track":** clips are found from speech, so silent videos are
   rejected.
+- **A clip shows ✗ gave up as too long:** it is over that platform's limit (see
+  `<PLATFORM>_MAX_SECONDS`). Trim it, or lower `STORY_PART_MAX_SECONDS` for stories.
+- **Disk filling up after deleting videos:** run `src.prune_main` (see *Data*).
 
 ## Licenses and responsible use
 
 The caption fonts are Montserrat, under the SIL Open Font License
 (`assets/fonts/OFL.txt`). The built-in music is CC0. Sources are in
-`assets/music/manifest.json`. Only download and republish videos you have the rights to.
+`assets/music/manifest.json`. Narration uses the Kokoro-82M model (Apache 2.0) through
+kokoro-onnx, and lip sync uses Rhubarb Lip Sync (MIT). Only download and republish videos
+and stories you have the rights to.
