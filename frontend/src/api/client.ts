@@ -1,5 +1,15 @@
 import type { ClipDetail, Edl, MusicTrack, Span, Tracking, Zoom } from "../editor/types";
-import type { Clip, Export, Job, PostStatus, Video, VideoFile } from "./types";
+import type {
+  BackgroundLibrary,
+  Clip,
+  Export,
+  Job,
+  NewStory,
+  PostStatus,
+  StoryOptions,
+  Video,
+  VideoFile,
+} from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -65,16 +75,20 @@ export function uploadVideo(
   onProgress: (fraction: number) => void,
   clipPrompt = "",
 ): Promise<Video> {
+  const query = new URLSearchParams({ filename: file.name, clip_prompt: clipPrompt });
+  return uploadRaw<Video>(`/api/videos/upload?${query}`, file, onProgress);
+}
+
+function uploadRaw<T>(url: string, file: File, onProgress: (fraction: number) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const query = new URLSearchParams({ filename: file.name, clip_prompt: clipPrompt });
-    xhr.open("POST", `/api/videos/upload?${query}`);
+    xhr.open("POST", url);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     };
     xhr.onload = () => {
       const body = JSON.parse(xhr.responseText || "null");
-      if (xhr.status < 300) resolve(body as Video);
+      if (xhr.status < 300) resolve(body as T);
       else reject(new Error(describeError(body) ?? `Upload failed (${xhr.status})`));
     };
     xhr.onerror = () => reject(new Error("Upload failed: network error"));
@@ -122,3 +136,37 @@ export const findClipsAgain = (videoId: string, clipPrompt?: string) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(clipPrompt === undefined ? {} : { clip_prompt: clipPrompt }),
   });
+
+/** Narrator: narrate a story; it shows up in the video list with `kind: "story"`. */
+export const createStory = (story: NewStory) =>
+  request<Video>("/api/stories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(story),
+  });
+
+export const getStoryOptions = () => request<StoryOptions>("/api/stories/options");
+
+/** One SVG layer of a narrator character, e.g. `characterUrl("guy", "mouth/D.svg")`. */
+export const characterUrl = (name: string, layer: string) => `/api/characters/${name}/${layer}`;
+
+export const listBackgrounds = () => request<BackgroundLibrary>("/api/backgrounds");
+
+export const addBackgroundUrl = (url: string, category: string) =>
+  request<Job>("/api/backgrounds", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, category }),
+  });
+
+export const uploadBackground = (file: File, category: string, onProgress: (fraction: number) => void) =>
+  uploadRaw<Job>(
+    `/api/backgrounds/upload?${new URLSearchParams({ filename: file.name, category })}`,
+    file,
+    onProgress,
+  );
+
+export const backgroundUrl = (ref: string) => `/api/backgrounds/${ref}`;
+
+export const deleteBackground = (ref: string) =>
+  request<void>(`/api/backgrounds/${ref}`, { method: "DELETE" });

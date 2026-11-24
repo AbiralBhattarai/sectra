@@ -11,6 +11,11 @@ class JobType(StrEnum):
     ANALYZE = "analyze"
     EXPORT = "export"
     TRACK = "track"
+    #: Stories: text → narration.wav (+ lipsync.json), then narration → source.mp4.
+    NARRATE = "narrate"
+    COMPOSE = "compose"
+    #: Adds a gameplay clip to the background library (download or upload, then re-encode).
+    BACKGROUND = "background"
 
     @property
     def stream(self) -> str:
@@ -29,6 +34,7 @@ _STREAMS = {
     JobType.INGEST: "jobs:ingest",
     JobType.EXPORT: "jobs:render",
     JobType.TRACK: "jobs:tracking",
+    JobType.BACKGROUND: "jobs:ingest",
 }
 
 _NEXT_STAGE = {
@@ -37,4 +43,7 @@ _NEXT_STAGE = {
     JobType.PREPARE: JobType.VAD,
     JobType.VAD: JobType.TRANSCRIBE,
     JobType.TRANSCRIBE: JobType.ANALYZE,
+    # Stories build source.mp4 themselves, then join the clipping pipeline at PREPARE.
+    JobType.NARRATE: JobType.COMPOSE,
+    JobType.COMPOSE: JobType.PREPARE,
 }

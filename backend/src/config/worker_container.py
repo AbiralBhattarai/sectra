@@ -9,13 +9,16 @@ from openai import AsyncOpenAI
 from src.adapters.input.worker.redis_stream_consumer import RedisStreamConsumer
 from src.adapters.output.downloader.yt_dlp_adapter import YtDlpAdapter
 from src.adapters.output.face.onnx_face_tracker_adapter import OnnxFaceTrackerAdapter
+from src.adapters.output.lipsync.rhubarb_adapter import RhubarbLipSyncAdapter
 from src.adapters.output.llm.anthropic_adapter import AnthropicLLMAdapter
 from src.adapters.output.llm.openai_compat_adapter import OpenAICompatLLMAdapter
 from src.adapters.output.media.ffmpeg_media_adapter import FfmpegMediaAdapter
 from src.adapters.output.renderer.ffmpeg_renderer_adapter import FfmpegRendererAdapter
 from src.adapters.output.stt.faster_whisper_adapter import FasterWhisperAdapter
 from src.adapters.output.stt.openai_compat_stt_adapter import OpenAICompatSTTAdapter
+from src.adapters.output.tts.kokoro_onnx_adapter import KokoroOnnxAdapter
 from src.adapters.output.vad.silero_onnx_adapter import SileroOnnxAdapter
+from src.application.services.background_library_service import BackgroundLibraryService
 from src.application.services.clip_export_service import ClipExportService
 from src.application.services.clip_tracking_service import ClipTrackingService
 from src.application.services.highlight_analysis_service import HighlightAnalysisService
@@ -24,6 +27,9 @@ from src.application.services.media_preparation_service import MediaPreparationS
 from src.application.services.ping_service import PingService
 from src.application.services.pipeline_dispatcher import PipelineDispatcher
 from src.application.services.speech_detection_service import SpeechDetectionService
+from src.application.services.story_clip_service import AnalysisRouter, StoryClipService
+from src.application.services.story_composition_service import StoryCompositionService
+from src.application.services.story_narration_service import StoryNarrationService
 from src.application.services.transcription_service import TranscriptionService
 from src.config.container import Container, build_container
 from src.config.settings import Settings
@@ -54,7 +60,16 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
     # One ffmpeg budget shared by media preparation and rendering.
     ffmpeg_slots = asyncio.Semaphore(settings.ffmpeg_concurrency)
     media = FfmpegMediaAdapter(ffmpeg_slots, core.executor)
-    renderer = FfmpegRendererAdapter(ffmpeg_slots, core.executor, settings.fonts_dir)
+    renderer = FfmpegRendererAdapter(
+        ffmpeg_slots, core.executor, settings.fonts_dir, settings.characters_dir
+    )
+    tts = KokoroOnnxAdapter(
+        settings.tts_model_path,
+        settings.tts_voices_path,
+        asyncio.Semaphore(settings.tts_concurrency),
+        core.executor,
+    )
+    lipsync = RhubarbLipSyncAdapter(settings.rhubarb_path, asyncio.Semaphore(2))
     vad = SileroOnnxAdapter(
         settings.vad_model_path, asyncio.Semaphore(settings.vad_concurrency), core.executor
     )
@@ -107,20 +122,49 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
             JobType.TRANSCRIBE: TranscriptionService(
                 videos=core.videos, storage=core.storage, stt=stt, language=settings.stt_language
             ),
-            JobType.ANALYZE: HighlightAnalysisService(
+            JobType.ANALYZE: AnalysisRouter(
+                videos=core.videos,
+                clipping=HighlightAnalysisService(
+                    videos=core.videos,
+                    storage=core.storage,
+                    clips=core.clips,
+                    llm=llm,
+                    min_seconds=settings.clip_min_seconds,
+                    max_seconds=settings.clip_max_seconds,
+                    max_count=settings.clip_max_count,
+                    window_seconds=settings.llm_window_seconds,
+                    clips_per_window=settings.llm_clips_per_window,
+                    max_overlap=settings.clip_max_overlap,
+                    auto_zoom=settings.auto_zoom,
+                    tracking=tracking if settings.auto_track else None,
+                    exports=exporter if auto_export else None,
+                ),
+                stories=StoryClipService(
+                    videos=core.videos,
+                    storage=core.storage,
+                    clips=core.clips,
+                    llm=llm,
+                    part_max_seconds=settings.story_part_max_seconds,
+                    exports=exporter if auto_export else None,
+                ),
+            ),
+            JobType.NARRATE: StoryNarrationService(
                 videos=core.videos,
                 storage=core.storage,
-                clips=core.clips,
+                tts=tts,
+                lipsync=lipsync,
                 llm=llm,
-                min_seconds=settings.clip_min_seconds,
-                max_seconds=settings.clip_max_seconds,
-                max_count=settings.clip_max_count,
-                window_seconds=settings.llm_window_seconds,
-                clips_per_window=settings.llm_clips_per_window,
-                max_overlap=settings.clip_max_overlap,
-                auto_zoom=settings.auto_zoom,
-                tracking=tracking if settings.auto_track else None,
-                exports=exporter if auto_export else None,
+                pause_seconds=settings.tts_pause_seconds,
+            ),
+            JobType.COMPOSE: StoryCompositionService(
+                videos=core.videos, storage=core.storage, media=media
+            ),
+            JobType.BACKGROUND: BackgroundLibraryService(
+                storage=core.storage,
+                jobs=core.jobs,
+                scheduler=core.scheduler,
+                downloader=downloader,
+                media=media,
             ),
             JobType.EXPORT: exporter,
             JobType.TRACK: tracking,
@@ -128,6 +172,7 @@ def build_worker_container(settings: Settings) -> WorkerContainer:
         max_attempts=settings.job_max_attempts,
         # One video at a time through the analysis stages; only safe with one consumer slot.
         inline_streams=frozenset({analysis_stream} if settings.analysis_concurrency == 1 else ()),
+        storage=core.storage,
     )
     consumers = {
         stream: RedisStreamConsumer(

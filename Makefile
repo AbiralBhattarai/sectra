@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate test lint models music whisper poster poster-schedule
+.PHONY: up down logs migrate test lint models music whisper poster poster-schedule characters
 
 up:
 	docker compose up -d --build
@@ -27,6 +27,14 @@ models:
 	curl -sSfL -o backend/models/face_detection_yunet.onnx \
 		https://github.com/opencv/opencv_zoo/raw/f12e12798e8314f7c074a6656816c048dcc95b7a/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
 	docker build -f backend/Dockerfile.worker --target asd-model -o backend/models backend
+	curl -sSfL -o backend/models/kokoro-v1.0.int8.onnx \
+		https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx
+	curl -sSfL -o backend/models/voices-v1.0.bin \
+		https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+
+# Narrator characters (SVG layers in assets/characters/), drawn by a script.
+characters:
+	python3 scripts/make_characters.py
 
 # Default background-music library (90 CC0 tracks, ~600 MB) listed in assets/music/manifest.json.
 music:

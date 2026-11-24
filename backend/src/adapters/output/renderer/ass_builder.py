@@ -69,8 +69,14 @@ def build_ass(plan: RenderPlan) -> str:
     lines = [_HEADER.format(width=width, height=height, styles="\n".join(styles))]
 
     centre = width // 2
+    # A set caption_y anchors the block's bottom edge there (e.g. above a narrator).
+    anchored = (
+        f"{{\\an2\\pos({centre},{round(height * plan.caption_y)})}}"
+        if plan.caption_y is not None
+        else None
+    )
     if plan.caption_style is CaptionStyle.BOLD_HIGHLIGHT:
-        position = f"{{\\an8\\pos({centre},{round(height * 0.62)})}}"
+        position = anchored or f"{{\\an8\\pos({centre},{round(height * 0.62)})}}"
         for cue in plan.captions:
             words = [_escape(w.text).upper() for w in cue.words]
             # One event per spoken word, with that word highlighted.
@@ -85,7 +91,7 @@ def build_ass(plan: RenderPlan) -> str:
                 )
                 lines.append(_dialogue(0, start, end, "bold", position + text))
     elif plan.caption_style is not CaptionStyle.NONE:
-        position = f"{{\\an2\\pos({centre},{round(height * 0.91)})}}"
+        position = anchored or f"{{\\an2\\pos({centre},{round(height * 0.91)})}}"
         for cue in plan.captions:
             text = " ".join(_escape(w.text) for w in cue.words)
             lines.append(

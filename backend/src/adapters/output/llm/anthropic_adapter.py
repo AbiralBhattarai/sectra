@@ -47,3 +47,16 @@ class AnthropicLLMAdapter:
         if block is None or not isinstance(block.input, dict):
             raise InvalidLLMOutputException("Claude did not call the result tool")
         return block.input
+
+    async def complete_text(self, system: str, user: str) -> str:
+        async with self._semaphore:
+            try:
+                response = await self._client.messages.create(
+                    model=self._model,
+                    max_tokens=self._max_tokens,
+                    system=system,
+                    messages=[{"role": "user", "content": user}],
+                )
+            except APIError as exc:
+                raise LLMException(f"LLM request failed: {exc}") from exc
+        return "".join(b.text for b in response.content if b.type == "text").strip()

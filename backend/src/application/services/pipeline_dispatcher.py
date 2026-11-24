@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
@@ -8,6 +10,7 @@ from src.domain.enums.job_status_enum import JobStatus
 from src.domain.enums.job_type_enum import JobType
 from src.domain.enums.video_status_enum import VideoStatus
 from src.domain.models.job import Job, JobEvent
+from src.ports.output.file_storage_port import FileStoragePort
 from src.ports.output.job_repository import JobRepository
 from src.ports.output.progress_port import ProgressPort
 from src.ports.output.video_repository import VideoRepository
@@ -19,6 +22,10 @@ ProgressCallback = Callable[[float], Awaitable[None]]
 
 StageHandler = Callable[[Job, ProgressCallback], Awaitable[None]]
 
+#: How often a running job checks that its row still exists (deleting a video
+#: cascades to its jobs, and that is how the worker learns to stop).
+CANCEL_POLL_SECONDS = 3.0
+
 
 class PipelineDispatcher:
     """Runs one job: picks the handler for its type, records the outcome, and on
@@ -28,7 +35,10 @@ class PipelineDispatcher:
     runs right away in the same call, so a video goes through all of that stream's
     stages before the stream's next message is read. The next stage is still queued
     first, so a crash mid-chain resumes from it; when its message arrives after the
-    inline run, the job is already terminal and is skipped."""
+    inline run, the job is already terminal and is skipped.
+
+    A job whose row disappears while it runs (its video was deleted) is cancelled, and
+    whatever it wrote for the deleted video is removed."""
 
     def __init__(
         self,
@@ -39,6 +49,8 @@ class PipelineDispatcher:
         handlers: Mapping[JobType, StageHandler],
         max_attempts: int,
         inline_streams: frozenset[str] = frozenset(),
+        storage: FileStoragePort | None = None,
+        cancel_poll_seconds: float = CANCEL_POLL_SECONDS,
     ) -> None:
         self._jobs = jobs
         self._videos = videos
@@ -47,6 +59,8 @@ class PipelineDispatcher:
         self._handlers = handlers
         self._max_attempts = max_attempts
         self._inline_streams = inline_streams
+        self._storage = storage
+        self._cancel_poll = cancel_poll_seconds
 
     async def run_job(self, job_id: UUID) -> None:
         next_id: UUID | None = job_id
@@ -64,6 +78,10 @@ class PipelineDispatcher:
             # the message of a stage that already ran inline).
             return None
 
+        if not await self._owner_exists(job):
+            await self._abandon(job)
+            return None
+
         job.attempts += 1
         if job.attempts > self._max_attempts:
             await self._fail(job, f"Gave up after {self._max_attempts} attempts")
@@ -78,7 +96,10 @@ class PipelineDispatcher:
             await self._update(job)
 
         try:
-            await self._handlers[job.type](job, report)
+            if not await self._run_unless_deleted(job, report):
+                logger.info("Job %s (%s): its video was deleted; stopped it", job.id, job.type)
+                await self._abandon(job)
+                return None
         except Exception as exc:
             logger.exception("Job %s (%s) failed", job.id, job.type)
             await self._fail(job, str(exc) or type(exc).__name__)
@@ -100,6 +121,50 @@ class PipelineDispatcher:
         await self._update(job)
         return inline
 
+    async def _run_unless_deleted(self, job: Job, report: ProgressCallback) -> bool:
+        """Runs the handler; returns False if the job's row vanished and it was stopped."""
+        work = asyncio.create_task(self._handlers[job.type](job, report))
+        try:
+            while True:
+                done, _ = await asyncio.wait({work}, timeout=self._cancel_poll)
+                if done:
+                    work.result()  # re-raises the handler's exception
+                    return True
+                if not await self._owner_exists(job):
+                    work.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await work
+                    return False
+        except asyncio.CancelledError:
+            # Shutdown: stop the handler too, and stay cancelled (the job is replayed).
+            work.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await work
+            raise
+
+    async def _owner_exists(self, job: Job) -> bool:
+        """False once the job's video is deleted. Stage jobs go with the video (cascade);
+        clip jobs (export, tracking) only name it in their payload, so their row stays."""
+        if await self._jobs.get(job.id) is None:
+            return False
+        video_id = _owner(job)
+        return video_id is None or await self._videos.get(video_id) is not None
+
+    async def _abandon(self, job: Job) -> None:
+        """Clean up after a job whose video is gone: drop what it re-created on disk and
+        close the job if its row survived."""
+        video_id = _owner(job)
+        if (
+            self._storage is not None
+            and video_id is not None
+            and await self._videos.get(video_id) is None
+        ):
+            await self._storage.delete_video(video_id)
+        if await self._jobs.get(job.id) is not None:
+            job.status = JobStatus.FAILED
+            job.error = "The video was deleted"
+            await self._update(job)
+
     async def _fail(self, job: Job, error: str) -> None:
         if job.video_id:
             await self._set_video_status(job.video_id, VideoStatus.FAILED)
@@ -117,3 +182,13 @@ class PipelineDispatcher:
         job.updated_at = datetime.now(UTC)
         await self._jobs.save(job)
         await self._progress.publish(JobEvent.from_job(job))
+
+
+def _owner(job: Job) -> UUID | None:
+    if job.video_id is not None:
+        return job.video_id
+    raw = job.payload.get("video_id")
+    try:
+        return UUID(str(raw)) if raw else None
+    except ValueError:
+        return None

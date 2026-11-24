@@ -179,3 +179,37 @@ def test_post_description_is_the_title_then_the_users_text():
     assert post_description(title, "  ") == title
     assert post_description(" Title ", " credit: @lacy\n#fyp ") == "Title credit: @lacy\n#fyp"
     assert post_description("", "#lacy") == "#lacy"
+
+
+async def test_deleting_a_video_removes_its_outbox_folder_only(storage, tmp_path):
+    video_id, other_id = uuid4(), uuid4()
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"mp4")
+    await storage.write_outbox(video_id, "Gone", 1, "bye", clip, {"video_id": str(video_id)})
+    await storage.write_outbox(other_id, "Kept", 1, "hi", clip, {"video_id": str(other_id)})
+    # Same id prefix, different video: must survive.
+    twin = tmp_path / "outbox" / f"Twin [{str(video_id)[:8]}]"
+    twin.mkdir()
+    (twin / "01 x.json").write_text(json.dumps({"video_id": str(other_id)}), encoding="utf-8")
+    storage.path(video_id, VideoFile.SOURCE).parent.mkdir(parents=True, exist_ok=True)
+
+    await storage.delete_video(video_id)
+
+    left = sorted(p.name for p in (tmp_path / "outbox").iterdir())
+    assert left == [f"Kept [{str(other_id)[:8]}]", f"Twin [{str(video_id)[:8]}]"]
+    assert not storage.path(video_id, VideoFile.SOURCE).parent.exists()
+
+
+async def test_leftovers_are_folders_of_videos_that_no_longer_exist(storage, tmp_path):
+    kept, gone = uuid4(), uuid4()
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"mp4")
+    for video_id in (kept, gone):
+        storage.path(video_id, VideoFile.SOURCE).parent.mkdir(parents=True, exist_ok=True)
+        await storage.write_outbox(video_id, "V", 1, "c", clip, {"video_id": str(video_id)})
+    (tmp_path / "data" / "videos" / "not-a-video").mkdir()
+
+    found = storage.leftovers({str(kept)}, min_age_seconds=0)
+
+    assert sorted(p.name for p in found) == sorted([str(gone), f"V [{str(gone)[:8]}]"])
+    assert storage.leftovers({str(kept)}, min_age_seconds=3600) == []  # too recent

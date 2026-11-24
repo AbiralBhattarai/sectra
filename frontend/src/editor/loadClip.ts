@@ -1,7 +1,7 @@
 import { getClip, getMediaJson } from "../api/client";
 import type { Video } from "../api/types";
 import type { EditorAssets } from "./store";
-import type { Peaks, SpeechMap, Transcript } from "./types";
+import type { MouthCue, Peaks, SpeechMap, Transcript } from "./types";
 
 const assetCache = new Map<string, Promise<EditorAssets>>();
 
@@ -13,10 +13,13 @@ function videoAssets(videoId: string): Promise<EditorAssets> {
       getMediaJson<Transcript>(videoId, "transcript.json"),
       getMediaJson<SpeechMap>(videoId, "speech.json"),
       getMediaJson<Peaks>(videoId, "peaks.json").catch(() => null),
-    ]).then(([transcript, speech, peaks]) => ({
+      // Only stories with a narrator have lip sync.
+      getMediaJson<{ cues: MouthCue[] }>(videoId, "lipsync.json").catch(() => null),
+    ]).then(([transcript, speech, peaks, lipsync]) => ({
       transcript: transcript.segments.flatMap((s) => s.words),
       speech: speech.segments,
       peaks,
+      mouthCues: lipsync?.cues ?? [],
     }));
     assets.catch(() => assetCache.delete(videoId));
     assetCache.set(videoId, assets);

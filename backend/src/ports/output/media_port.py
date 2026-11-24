@@ -26,6 +26,26 @@ class MediaPort(Protocol):
 
     async def make_thumbnail(self, src: Path, dst: Path, at_seconds: float) -> None: ...
 
+    async def compose_story(
+        self,
+        narration: Path,
+        dst: Path,
+        duration: float,
+        background: Path | None,
+        offset: float,
+        on_progress: OnProgress,
+    ) -> None:
+        """A story's ``source.mp4``: ``background`` (looped if shorter, from ``offset``)
+        or, when None, a black 1080x1920 frame, with ``narration`` as the audio, cut to
+        ``duration`` seconds."""
+        ...
+
+    async def make_background(
+        self, src: Path, dst: Path, duration: float, on_progress: OnProgress
+    ) -> None:
+        """A library clip from a download/upload: video only, short side ≤ 1080, H.264."""
+        ...
+
     async def compute_peaks(self, wav: Path, dst: Path, per_second: int) -> None:
         """Write the waveform as JSON ``{"per_second": n, "peaks": [0..1, ...]}``."""
         ...

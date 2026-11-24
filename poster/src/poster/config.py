@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from poster.video_info import DEFAULT_LIMITS
+
 ROOT = Path(__file__).resolve().parents[2]  # the poster/ directory
 PLATFORMS = ("youtube", "tiktok", "instagram", "x", "facebook")
 #: Posted to when PLATFORMS isn't set.
@@ -34,6 +36,8 @@ class Settings:
     state_file: Path = ROOT / "state.json"
     #: YouTube: "public", "unlisted" or "private".
     youtube_visibility: str = "public"
+    #: Longest clip per platform, seconds (see video_info.DEFAULT_LIMITS).
+    max_seconds: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_LIMITS))
     extra: dict[str, str] = field(default_factory=dict)
 
 
@@ -75,6 +79,11 @@ def load_settings(env_file: Path = ROOT / ".env") -> Settings:
         if visibility not in ("public", "unlisted", "private"):
             raise ValueError("YOUTUBE_VISIBILITY must be public, unlisted or private")
         kwargs["youtube_visibility"] = visibility
+    limits = dict(DEFAULT_LIMITS)
+    for platform in PLATFORMS:
+        if limit := get(f"{platform.upper()}_MAX_SECONDS"):
+            limits[platform] = float(limit)
+    kwargs["max_seconds"] = limits
     return Settings(**kwargs)
 
 

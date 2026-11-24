@@ -75,6 +75,32 @@ class FileStoragePort(Protocol):
         """Location of a track: an upload, else a built-in one (it may not exist)."""
         ...
 
+    def background_incoming_dir(self, job_id: UUID) -> Path:
+        """Scratch directory for a BACKGROUND job's download/upload, created if missing."""
+        ...
+
+    async def save_background_upload(
+        self, job_id: UUID, extension: str, chunks: AsyncIterator[bytes]
+    ) -> Path:
+        """Stream an uploaded gameplay clip into the job's scratch directory."""
+        ...
+
+    def background_path(self, category: str, file: str) -> Path:
+        """Location of a library clip (it may not exist); the category dir is created."""
+        ...
+
+    def list_backgrounds(self) -> list[tuple[str, str]]:
+        """(category, file) of every finished library clip, sorted."""
+        ...
+
+    async def delete_background(self, category: str, file: str) -> None: ...
+
+    async def remove_background_incoming(self, job_id: UUID) -> None: ...
+
+    def character_path(self, name: str, layer: str) -> Path:
+        """A narrator character's layer file, e.g. ``("guy", "mouth/A.svg")``."""
+        ...
+
     async def delete_video(self, video_id: UUID) -> None:
-        """Remove every file of the video."""
+        """Remove every file of the video, its outbox folder included."""
         ...

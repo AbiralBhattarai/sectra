@@ -18,7 +18,7 @@ FROM python:3.12-slim
 
 # ffmpeg for all media work; Deno is the JS runtime yt-dlp needs to solve YouTube challenges.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg unzip \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 
@@ -31,6 +31,20 @@ ADD --checksum=sha256:8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2
     https://github.com/opencv/opencv_zoo/raw/f12e12798e8314f7c074a6656816c048dcc95b7a/models/face_detection_yunet/face_detection_yunet_2023mar.onnx \
     /opt/models/face_detection_yunet.onnx
 COPY --from=asd-export /out/light_asd.onnx /opt/models/light_asd.onnx
+# Narrator TTS: Kokoro-82M v1.0 (Apache-2.0) via kokoro-onnx, int8, plus its voices.
+ADD --checksum=sha256:6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb \
+    https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx \
+    /opt/models/kokoro-v1.0.int8.onnx
+ADD --checksum=sha256:bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d \
+    https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin \
+    /opt/models/voices-v1.0.bin
+# Rhubarb Lip Sync (MIT) for the narrator's mouth; it needs its res/ folder beside it.
+ADD --checksum=sha256:a9a9074862cff47b2d59b8bf399a678a3b0b74f9452ad6ad94cb292913dd8667 \
+    https://github.com/DanielSWolf/rhubarb-lip-sync/releases/download/v1.14.0/Rhubarb-Lip-Sync-1.14.0-Linux.zip \
+    /tmp/rhubarb.zip
+RUN unzip -q /tmp/rhubarb.zip -d /tmp \
+    && mv /tmp/Rhubarb-Lip-Sync-1.14.0-Linux /opt/rhubarb \
+    && rm /tmp/rhubarb.zip
 
 COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
@@ -40,7 +54,11 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VAD_MODEL_PATH=/opt/models/silero_vad.onnx \
     FACE_MODEL_PATH=/opt/models/face_detection_yunet.onnx \
-    ASD_MODEL_PATH=/opt/models/light_asd.onnx
+    ASD_MODEL_PATH=/opt/models/light_asd.onnx \
+    TTS_MODEL_PATH=/opt/models/kokoro-v1.0.int8.onnx \
+    TTS_VOICES_PATH=/opt/models/voices-v1.0.bin \
+    RHUBARB_PATH=/opt/rhubarb/rhubarb \
+    CHARACTERS_DIR=/opt/characters
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./

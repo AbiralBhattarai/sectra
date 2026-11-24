@@ -62,6 +62,10 @@ than working around the rule.**
   clips and builds 50 EDLs (+ auto zooms) in `asyncio.to_thread`.
 - Shutdown: SIGTERM drains in-flight jobs for up to 30s, then cancels them
   (they stay pending → replayed). `stop_grace_period: 40s` in compose.
+- Deleting a video cascades to its jobs; a running job notices its row is gone (the
+  dispatcher polls every 3 s), cancels its handler (ffmpeg/Rhubarb are killed, Kokoro stops
+  between sentences), acks, and deletes whatever it re-created under `data/videos/<id>/`.
+  Before this, a deleted story kept narrating and blocked the next one on `jobs:analysis`.
 - Progress: dispatcher saves + publishes `JobEvent` on Redis pub/sub
   `job-events`; `GET /api/events` relays it as SSE (`event: job`).
 
@@ -246,6 +250,12 @@ Poster (`poster/`, host only, like `whisper-server/`):
   Failures back off (serve: 1 min doubling; run: 15 min).
 - `schedule.py` (pure): `POSTS_PER_DAY` (10) spread over `ACTIVE_HOURS` (9-23) with ±25%
   jitter; cap reached → next day's opening.
+- `poster delete [--platform P] [--check | --yes] [--limit N]` (`deleting.py`) takes down
+  only what the sidecars record as posted: YouTube/X by the saved link (Studio "Delete
+  forever"; X caret → Delete), TikTok by caption in Studio's content list (skipped unless
+  exactly one row matches). Default lists only; `--check` opens each delete dialog and
+  cancels; `--yes` deletes and writes `deleted[platform]` (keeps `posted`, so nothing is
+  re-uploaded). Its selectors were written without a live check — verify with `--check`.
 - Selectors live at the top of each `platforms/*.py`; failures save a screenshot to
   `poster/logs/`. They will need updating when the sites change.
 
@@ -286,6 +296,62 @@ Streamer mode (`Edl.facecam`):
   `crops` (the pane height divides by `len(crops)`).
 - Preview: a `.pip` canvas fed from the one `<video>` (like the split's bottom pane); its
   pointer handlers `stopPropagation` so dragging it pans the facecam, not the gameplay.
+
+## Narrator (stories)
+
+The UI has two tabs: **Clipper** (everything above) and **Narrator**. A story is a `Video`
+with `kind = "story"` and `story: StorySpec` (JSONB, migration `0007`); its `source.mp4`
+is *built*, then it joins the clipping pipeline, so the editor/render/outbox/poster are
+shared. The frontend filters `GET /api/videos` by `kind` per tab.
+
+- Pipeline: `NARRATE` → `COMPOSE` → `PREPARE` → `VAD` → `TRANSCRIBE` → `ANALYZE`
+  (`_NEXT_STAGE`; all on `jobs:analysis`). `AnalysisRouter` (the ANALYZE handler) sends
+  stories to `StoryClipService` instead of clip finding. `POST /api/stories` queues NARRATE.
+- NARRATE (`StoryNarrationService`): `story_text.clean_for_speech` → optional LLM polish →
+  Kokoro → `narration.wav` (24 kHz) → Rhubarb → `lipsync.json` (only with a character).
+  Saves the narration length in `video.duration`; COMPOSE cuts `source.mp4` to exactly that.
+- **Polish is shaped for a 7B model**: ~500-word chunks rewritten as *plain text*
+  (`LLMPort.complete_text`, not JSON), each kept only if `rewrite_ok` (70–140% of the
+  words); title/caption is a separate tiny JSON call. Any LLM failure falls back to the
+  user's text — the stage never fails because of the LLM.
+- COMPOSE: black 1080×1920 (`-f lavfi color`, `-tune stillimage`) or a gameplay clip from
+  the library (chosen file / random in category / random), random offset, looped if short.
+- Story ANALYZE: `story_parts.split_parts` cuts at pauses into parts ≤
+  `STORY_PART_MAX_SECONDS` (140: X without Premium; Reels/Shorts allow 180) that tile the timeline. Each
+  part: `Edl.for_span` + title overlay (Part 1: title, else "Part N") + `edl.character` +
+  `captions.y` just above the head. One 7B JSON call per 60 lines picks expressions
+  (`moods`), merged by `character_timeline.merge_moods`; malformed ⇒ neutral. Parts go to
+  the outbox in order (`outbox_rank = part`) when AUTO_EXPORT/AUTO_TRACK is on.
+- **Captions `y`** (`Captions.y`, `RenderPlan.caption_y`): bottom edge of the caption block
+  as a fraction of the height; ASS `\an2\pos`, CSS `padding-bottom: (1-y)·100cqh`. None =
+  the style's own spot (so clipper clips are unchanged).
+- Kokoro: `kokoro-onnx` int8 model + voices, checksummed in `Dockerfile.worker`,
+  `make models` for the host. Voices in `domain/models/story.py VOICES` (the API image
+  validates without Kokoro). Rhubarb 1.14.0 (Linux zip, checksummed) lives in
+  `/opt/rhubarb` with its `res/` folder; it runs with `--dialogFile` (the known text).
+
+Characters (`assets/characters/<name>/`, drawn by `scripts/make_characters.py`, stdlib):
+- Layers on one 1000×1500 canvas (`CANVAS_ASPECT` 2:3): `base/<emotion>.svg` (figure +
+  eyes, no mouth), `mouth/{A..H,X}.svg` (Rhubarb shapes), `blink.svg`, `preview.svg`.
+  White figures with near-black outlines; the guy's dark hair/beard have a grey rim so
+  they read on black. Change the script and re-run `make characters`.
+- `domain/services/character_timeline.py` ≡ `editor/character.ts` (mirrored tests): box
+  geometry, mouth at t (binary search), moods, **deterministic blinks** (Park–Miller, exact
+  in JS doubles), idle bob. All source time; the render maps output→source with
+  `edl_timing.output_to_source`.
+- Render: `character_frames.write_character_video` rasterises each layer once with
+  `resvg-py` (cv2 decodes the PNG), composites BGRA frames at 30 fps and pipes them into
+  ffmpeg (`run_ffmpeg_fed`) → `<export>.character.mov` (qtrle, alpha); the main command
+  overlays it after crop/zoom and before `subtitles=` (`bob_margin` rows pad the box).
+- Preview: `CharacterLayer` mounts every layer once and toggles `visibility` (no flicker);
+  drag moves it. Mouth cues come from `lipsync.json` (editor assets `mouthCues`).
+
+Background library (gameplay for stories): `data/backgrounds/<category>/<8hex>-<slug>.mp4`,
+video only, short side ≤ 1080. `BACKGROUND` jobs (`jobs:ingest`, no video/clip id) download
+via yt-dlp or take an upload from `data/backgrounds/.incoming/<job_id>/`, re-encode to
+`.partial.mp4`, then rename (a story never picks a half-written clip). A failed upload keeps
+its scratch file so Retry works. `GET /api/backgrounds` lists ready clips + unfinished jobs
+(`JobRepository.list_by_type`).
 
 ## Things that will bite you
 

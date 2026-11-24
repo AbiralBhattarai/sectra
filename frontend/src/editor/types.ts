@@ -90,13 +90,51 @@ export interface Edl {
   split_screen: boolean;
   tracking: Tracking | null;
   ranges: Span[];
-  captions: { words: Word[]; style: CaptionStyle };
+  captions: Captions;
   overlays: Overlay[];
   music: Music | null;
   /** Sorted and non-overlapping; ignored with `split_screen`. */
   zooms: Zoom[];
   /** Streamer mode; when set, split screen and face tracking are ignored. */
   facecam?: Facecam | null;
+  /** Stories: the talking narrator, over the picture and under the captions. */
+  character?: CharacterTrack | null;
+}
+
+export interface Captions {
+  words: Word[];
+  style: CaptionStyle;
+  /** Bottom edge of the caption block as a fraction of the frame height (e.g. above a
+   * narrator); null/absent = the style's own position. */
+  y?: number | null;
+}
+
+export type Emotion = "neutral" | "happy" | "sad" | "angry" | "shocked" | "smug";
+export const EMOTIONS: Emotion[] = ["neutral", "happy", "sad", "angry", "shocked", "smug"];
+
+/** The character's expression over a stretch of source time. */
+export interface Mood {
+  start: number;
+  end: number;
+  emotion: Emotion;
+}
+
+/** The talking narrator: a box centred at (x, y) (fractions of the frame), `scale` of
+ * the frame tall. Mirrors the backend `CharacterTrack`. */
+export interface CharacterTrack {
+  name: string;
+  x: number;
+  y: number;
+  scale: number;
+  enabled: boolean;
+  moods: Mood[];
+}
+
+/** One Rhubarb mouth shape from `start` to `end` (source time). */
+export interface MouthCue {
+  start: number;
+  end: number;
+  shape: string;
 }
 
 export interface ClipDetail {

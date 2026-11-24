@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from src.domain.enums.aspect_ratio_enum import AspectRatio
 from src.domain.enums.caption_style_enum import CaptionStyle
 from src.domain.enums.overlay_style_enum import OverlayStyle
+from src.domain.models.character import CharacterTrack
 from src.domain.models.speech import TimeSpan
 from src.domain.models.transcript import Word
 
@@ -29,6 +30,9 @@ class Captions(BaseModel):
     #: Word timings on the source timeline; remapped to output time at render.
     words: list[Word]
     style: CaptionStyle = CaptionStyle.BOLD_HIGHLIGHT
+    #: Bottom edge of the caption block as a fraction of the frame height (e.g. just
+    #: above a narrator character); None = the style's own position.
+    y: float | None = Field(default=None, ge=0.1, le=1)
 
 
 class Overlay(BaseModel):
@@ -102,6 +106,8 @@ class Edl(BaseModel):
     zooms: list[Zoom] = Field(default_factory=list)
     #: Streamer mode; when set, split screen and face tracking are ignored.
     facecam: Facecam | None = None
+    #: Stories: the talking narrator, drawn over the picture and under the captions.
+    character: CharacterTrack | None = None
 
     @classmethod
     def for_span(cls, span: TimeSpan, words: list[Word]) -> "Edl":

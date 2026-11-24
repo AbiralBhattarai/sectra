@@ -36,6 +36,13 @@ def validate_edl(edl: Edl, source_duration: float) -> None:
         if zoom.start < previous_zoom_end - 1e-6:
             raise AppValidationException(f"Zoom {index + 1} overlaps or precedes the one before")
         previous_zoom_end = zoom.end
+    if edl.character is not None:
+        moods = edl.character.moods
+        for index, mood in enumerate(moods):
+            if mood.end - mood.start < MIN_RANGE_SECONDS:
+                raise AppValidationException(f"Mood {index + 1} ends before it starts")
+        if any(b.start < a.end - 1e-6 for a, b in zip(moods, moods[1:], strict=False)):
+            raise AppValidationException("Character moods must be in order and not overlap")
     if edl.tracking is not None:
         shots = edl.tracking.shots
         if not shots:

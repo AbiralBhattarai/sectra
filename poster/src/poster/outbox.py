@@ -120,11 +120,20 @@ def record_post(item: Item, platform: str, at: datetime, url: str | None) -> Non
 
 
 def record_failure(
-    item: Item, platform: str, at: datetime, error: str, max_failures: int = 3
+    item: Item,
+    platform: str,
+    at: datetime,
+    error: str,
+    max_failures: int = 3,
+    give_up: bool = False,
 ) -> None:
+    """Count a failed attempt; ``give_up`` when retrying can't help (clip too long)."""
+
     def change(data: dict[str, Any]) -> None:
         entry = data.setdefault("failures", {}).setdefault(platform, {"count": 0})
         count = int(entry.get("count", 0)) + 1
+        if give_up:
+            count = max(count, max_failures)
         entry.update(
             count=count, last=at.isoformat(), error=error[:500], gave_up=count >= max_failures
         )

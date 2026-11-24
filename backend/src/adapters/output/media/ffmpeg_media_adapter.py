@@ -10,6 +10,7 @@ import numpy as np
 from src.adapters.output.media.ffmpeg_process import run_ffmpeg, run_process, stderr_tail
 from src.domain.exceptions import MediaProcessingException
 from src.domain.models.media import MediaInfo, NormalizePlan
+from src.domain.services.media_rules import MAX_SOURCE_SHORT_SIDE, fit_short_side
 from src.ports.output.media_port import OnProgress
 from src.utils.concurrency import run_blocking
 
@@ -55,6 +56,40 @@ class FfmpegMediaAdapter:
              "-q:v", "3", str(dst)]
         )  # fmt: skip
 
+    async def compose_story(
+        self,
+        narration: Path,
+        dst: Path,
+        duration: float,
+        background: Path | None,
+        offset: float,
+        on_progress: OnProgress,
+    ) -> None:
+        if background is None:
+            # A still black frame: x264 encodes it to almost nothing.
+            video = ["-f", "lavfi", "-i", f"color=c=black:s={STORY_SIZE}:r=30"]
+            encode = _H264 + ["-tune", "stillimage", "-crf", "28"]
+        else:
+            video = ["-stream_loop", "-1", "-ss", f"{offset:.3f}", "-i", str(background)]
+            encode = _H264 + ["-crf", "21"]
+        args = [
+            *video, "-i", str(narration),
+            "-map", "0:v:0", "-map", "1:a:0", "-t", f"{duration:.3f}",
+            *encode, "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+            "-movflags", "+faststart", str(dst),
+        ]  # fmt: skip
+        await self._ffmpeg(args, duration, on_progress)
+
+    async def make_background(
+        self, src: Path, dst: Path, duration: float, on_progress: OnProgress
+    ) -> None:
+        info = await self.probe(src)
+        scale = fit_short_side(info.width, info.height, MAX_SOURCE_SHORT_SIDE)
+        args = ["-i", str(src), "-map", "0:v:0", "-an", *_H264, "-crf", "23"]
+        if scale:
+            args += ["-vf", "scale={}:{}".format(*scale)]
+        await self._ffmpeg([*args, "-movflags", "+faststart", str(dst)], duration, on_progress)
+
     async def compute_peaks(self, wav: Path, dst: Path, per_second: int) -> None:
         await run_blocking(self._executor, _write_peaks, wav, dst, per_second)
 
@@ -65,6 +100,8 @@ class FfmpegMediaAdapter:
             await run_ffmpeg(args, duration, on_progress)
 
 
+#: Stories without gameplay are a black 9:16 frame at the render size.
+STORY_SIZE = "1080x1920"
 _H264 = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
 
 

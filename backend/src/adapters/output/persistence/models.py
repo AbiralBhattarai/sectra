@@ -22,6 +22,8 @@ class VideoRow(Base):
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
     clip_prompt: Mapped[str] = mapped_column(Text, default="", server_default="")
+    kind: Mapped[str] = mapped_column(String(16), default="source", server_default="source")
+    story: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

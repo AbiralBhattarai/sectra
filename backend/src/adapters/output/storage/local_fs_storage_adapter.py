@@ -1,5 +1,9 @@
+import contextlib
+import functools
 import json
+import logging
 import shutil
+import time
 from collections.abc import AsyncIterator
 from concurrent.futures import Executor
 from pathlib import Path
@@ -10,6 +14,10 @@ from src.domain.enums.video_file_enum import VideoFile
 from src.domain.services.outbox_naming import folder_name, outbox_stem, unique_stem
 from src.utils.concurrency import run_blocking
 
+logger = logging.getLogger(__name__)
+
+#: Scratch space for background downloads/uploads, inside the backgrounds root.
+_INCOMING = ".incoming"
 #: Upload chunks are buffered to this size before each (threaded) disk write.
 _WRITE_BUFFER = 4 * 1024 * 1024
 
@@ -25,9 +33,12 @@ class LocalFsStorageAdapter:
         executor: Executor,
         default_music_dir: Path | None = None,
         outbox_dir: Path | None = None,
+        characters_dir: Path | None = None,
     ) -> None:
         self._videos_root = root / "videos"
         self._music_root = root / "music"
+        self._backgrounds_root = root / "backgrounds"
+        self._characters_root = characters_dir or Path("../assets/characters")
         self._outbox_root = outbox_dir or root / "outbox"
         self._default_music_root = default_music_dir
         self._executor = executor
@@ -142,16 +153,124 @@ class LocalFsStorageAdapter:
             await run_blocking(self._executor, handle.close)
 
     async def read_text(self, video_id: UUID, file: VideoFile) -> str:
-        return await run_blocking(self._executor, self.path(video_id, file).read_text)
+        path = self.path(video_id, file)
+        return await run_blocking(
+            self._executor, functools.partial(path.read_text, encoding="utf-8")
+        )
 
     async def write_text(self, video_id: UUID, file: VideoFile, content: str) -> None:
         def write() -> None:
             target = self.path(video_id, file)
             partial = target.with_name(f"{target.name}.partial")
-            partial.write_text(content)
+            partial.write_text(content, encoding="utf-8")
             partial.replace(target)
 
         await run_blocking(self._executor, write)
 
+    def background_incoming_dir(self, job_id: UUID) -> Path:
+        path = self._backgrounds_root / _INCOMING / str(job_id)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    async def save_background_upload(
+        self, job_id: UUID, extension: str, chunks: AsyncIterator[bytes]
+    ) -> Path:
+        dest = self.background_incoming_dir(job_id) / f"raw.{extension}"
+        await self._stream_to(dest, chunks)
+        return dest
+
+    def background_path(self, category: str, file: str) -> Path:
+        directory = self._backgrounds_root / category
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / file
+
+    def list_backgrounds(self) -> list[tuple[str, str]]:
+        if not self._backgrounds_root.is_dir():
+            return []
+        return sorted(
+            (category.name, file.name)
+            for category in self._backgrounds_root.iterdir()
+            if category.is_dir() and category.name != _INCOMING
+            for file in category.glob("*.mp4")
+            if not file.name.endswith(".partial.mp4")
+        )
+
+    async def delete_background(self, category: str, file: str) -> None:
+        def delete() -> None:
+            (self._backgrounds_root / category / file).unlink(missing_ok=True)
+            directory = self._backgrounds_root / category
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+
+        await run_blocking(self._executor, delete)
+
+    async def remove_background_incoming(self, job_id: UUID) -> None:
+        await run_blocking(
+            self._executor,
+            shutil.rmtree,
+            self._backgrounds_root / _INCOMING / str(job_id),
+            True,
+        )
+
+    def character_path(self, name: str, layer: str) -> Path:
+        return self._characters_root / name / layer
+
     async def delete_video(self, video_id: UUID) -> None:
-        await run_blocking(self._executor, shutil.rmtree, self._videos_root / str(video_id), True)
+        def delete() -> None:
+            folders = [self._videos_root / str(video_id), *self._outbox_folders(video_id)]
+            for folder in folders:
+                shutil.rmtree(folder, ignore_errors=True)
+                if folder.exists():  # a file still open (the poster uploading it, a player)
+                    logger.warning("Couldn't remove all of %s; delete what's left by hand", folder)
+
+        await run_blocking(self._executor, delete)
+
+    def leftovers(self, known: set[str], min_age_seconds: float = 600) -> list[Path]:
+        """Folders of videos that no longer exist: ``videos/<id>/`` and outbox folders
+        whose sidecars all name unknown videos. Recently changed ones are left alone (a
+        video being created right now isn't in the list that was read)."""
+        now = time.time()
+
+        def old(path: Path) -> bool:
+            return now - path.stat().st_mtime >= min_age_seconds
+
+        found = []
+        if self._videos_root.is_dir():
+            for folder in self._videos_root.iterdir():
+                if folder.is_dir() and folder.name not in known and old(folder):
+                    with contextlib.suppress(ValueError):
+                        UUID(folder.name)  # only video folders
+                        found.append(folder)
+        if self._outbox_root.is_dir():
+            for folder in self._outbox_root.iterdir():
+                if not folder.is_dir() or not old(folder):
+                    continue
+                owners = set()
+                for sidecar in folder.glob("*.json"):
+                    try:
+                        owners.add(json.loads(sidecar.read_text(encoding="utf-8")).get("video_id"))
+                    except (OSError, ValueError):
+                        owners.add("?")  # unreadable: keep the folder
+                if owners and not owners & (known | {"?", None}):
+                    found.append(folder)
+        return found
+
+    def _outbox_folders(self, video_id: UUID) -> list[Path]:
+        """The video's outbox folders: named ``… [<id prefix>]``, and every sidecar in them
+        names this exact video (an id prefix alone could, rarely, be another video's)."""
+        if not self._outbox_root.is_dir():
+            return []
+        suffix = f"[{str(video_id)[:8]}]"
+        found = []
+        for folder in self._outbox_root.iterdir():
+            if not (folder.is_dir() and folder.name.endswith(suffix)):
+                continue
+            owners = set()
+            for sidecar in folder.glob("*.json"):
+                try:
+                    owners.add(json.loads(sidecar.read_text(encoding="utf-8")).get("video_id"))
+                except (OSError, ValueError):
+                    owners.add(None)  # unreadable: can't tell whose it is
+            if owners <= {str(video_id)}:
+                found.append(folder)
+        return found

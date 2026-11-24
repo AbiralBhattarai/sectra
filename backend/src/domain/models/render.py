@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 
 from src.domain.enums.caption_style_enum import CaptionStyle
+from src.domain.models.character import Mood, MouthCue
 from src.domain.models.edl import Overlay
 from src.domain.models.speech import TimeSpan
 
@@ -54,6 +55,20 @@ class PipBox(BaseModel):
     height: int
 
 
+class CharacterPlan(BaseModel):
+    """The narrator to draw: ``name``'s layers in a ``width x height`` box whose top-left
+    is ``x, y`` (output pixels). Its state at each output frame comes from
+    ``character_timeline.character_state`` over the source-time cues and moods."""
+
+    name: str
+    x: int
+    y: int
+    width: int
+    height: int
+    cues: list[MouthCue]
+    moods: list[Mood]
+
+
 class RenderPlan(BaseModel):
     """Everything the renderer needs, already resolved to output time and pixels."""
 
@@ -70,9 +85,12 @@ class RenderPlan(BaseModel):
     height: int
     duration: float
     caption_style: CaptionStyle
+    #: Bottom of the caption block as a fraction of the height; None = the style's spot.
+    caption_y: float | None = None
     captions: list[CaptionCue]
     #: Always grouped like the "clean" style, for the downloadable .srt.
     subtitles: list[CaptionCue]
     overlays: list[Overlay]  # output time, clipped to the clip
     music_volume: float | None
+    character: CharacterPlan | None = None
     duck_music: bool

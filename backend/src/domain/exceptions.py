@@ -28,3 +28,7 @@ class LLMException(AppException):
 
 class InvalidLLMOutputException(LLMException):
     """The LLM answered, but not with the JSON that was asked for."""
+
+
+class SpeechSynthesisException(AppException):
+    """The text-to-speech engine failed."""

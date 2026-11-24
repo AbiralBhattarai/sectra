@@ -1,10 +1,17 @@
 from pathlib import Path
 
+from src.adapters.output.renderer.character_frames import bob_margin
 from src.domain.models.render import CropMove, RenderPlan, ZoomCue
 
 
 def build_command(
-    plan: RenderPlan, source: Path, music: Path | None, ass: Path, fonts_dir: Path, output: Path
+    plan: RenderPlan,
+    source: Path,
+    music: Path | None,
+    ass: Path,
+    fonts_dir: Path,
+    output: Path,
+    character: Path | None = None,
 ) -> list[str]:
     """ffmpeg arguments (after the global flags) rendering ``plan``.
 
@@ -17,6 +24,9 @@ def build_command(
     music_input = len(plan.ranges)
     if music is not None:
         args += ["-stream_loop", "-1", "-i", str(music)]
+    character_input = music_input + (music is not None)
+    if character is not None:
+        args += ["-i", str(character)]
 
     pairs = "".join(f"[{i}:v:0][{i}:a:0]" for i in range(len(plan.ranges)))
     pane_height = plan.height // len(plan.crops)
@@ -26,7 +36,16 @@ def build_command(
         f"{_zoom(plan.zooms, plan.width, pane_height)}"
         for c in plan.crops
     ]
-    finish = f"setsar=1,subtitles=filename={ass}:fontsdir={fonts_dir}[video]"
+    subtitles = f"subtitles=filename={ass}:fontsdir={fonts_dir}[video]"
+    finish = f"setsar=1,{subtitles}"
+    if character is not None and plan.character is not None:
+        # The narrator goes over the picture and under the captions.
+        box = plan.character
+        y = box.y - bob_margin(box.height)
+        finish = (
+            f"setsar=1[picture];[picture][{character_input}:v:0]"
+            f"overlay={box.x}:{y}:eof_action=pass:format=auto,{subtitles}"
+        )
     filters = [f"{pairs}concat=n={len(plan.ranges)}:v=1:a=1[cut][voice]"]
     if plan.pip is not None:
         pip = plan.pip
@@ -68,7 +87,7 @@ def build_command(
         "-filter_complex", ";".join(filters),
         "-map", "[video]", "-map", audio,
         "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
         "-movflags", "+faststart",
         str(output),
     ]  # fmt: skip

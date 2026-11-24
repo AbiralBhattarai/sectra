@@ -82,6 +82,20 @@ class Settings(BaseSettings):
     #: (for Ollama, OLLAMA_CONTEXT_LENGTH); the default fits a 4k context.
     llm_window_seconds: float = Field(default=300, ge=60)
 
+    #: Narrator: Kokoro TTS (kokoro-onnx model files, from Dockerfile.worker / `make models`).
+    tts_model_path: Path = Path("models/kokoro-v1.0.int8.onnx")
+    tts_voices_path: Path = Path("models/voices-v1.0.bin")
+    #: Stories narrated at once (each uses several CPU cores).
+    tts_concurrency: int = Field(default=1, ge=1)
+    #: Silence between sentences, seconds.
+    tts_pause_seconds: float = Field(default=0.25, ge=0, le=2)
+    #: Rhubarb Lip Sync binary (its res/ folder must sit next to it).
+    rhubarb_path: Path = Path("models/rhubarb/rhubarb")
+    #: Narrator characters: <dir>/<name>/{base,mouth}/*.svg, blink.svg.
+    characters_dir: Path = Path("../assets/characters")
+    #: Stories longer than this are split into parts (Shorts/Reels cap at 3 minutes).
+    story_part_max_seconds: float = Field(default=140, ge=30)
+
     #: The Montserrat files the preview uses; libass renders captions with the same ones.
     fonts_dir: Path = Path("../assets/fonts")
     #: Built-in CC0 music library (manifest.json + files from `make music`).
